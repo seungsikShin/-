@@ -598,8 +598,19 @@ elif menu == "질의응답":
     # 사용자 질문 입력 받기
     user_question = st.text_area("질문을 입력하세요:", height=100)
                                 
-    def extract_clean_text_from_gpts_response(response_text: str) -> str:
-        return re.sub(r"【.*?†.*?】", "", response_text).strip()
+    def extract_clean_text_from_gpts_response(response_obj: dict) -> str:
+    """
+    GPTS 응답 딕셔너리에서 text.value만 꺼내고 출처 제거
+    """
+    if isinstance(response_obj, dict) and "text" in response_obj:
+        raw_text = response_obj["text"]["value"]
+    elif isinstance(response_obj, str):
+        raw_text = response_obj
+    else:
+        return "⚠️ GPT 응답 형식이 잘못되었습니다."
+
+    return re.sub(r"【.*?†.*?】", "", raw_text).strip()
+    
     # 답변 받기 버튼
     if st.button("답변 받기"):
         if user_question:
@@ -608,7 +619,7 @@ elif menu == "질의응답":
         
                 if success:
                     st.markdown("### 답변")
-                    clean_answer = extract_clean_text_from_gpts_response(answer)  # 출처 제거
+                    clean_answer = extract_clean_text_from_gpts_response(answer)
                     st.write(clean_answer)
 
                     # 데이터베이스에는 원문 answer를 저장 (필요시 clean_answer로 바꿔도 됨)
