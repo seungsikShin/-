@@ -596,20 +596,22 @@ elif menu == "질의응답":
                 st.markdown(f"**답변:** {a}")
     
     # 사용자 질문 입력 받기
-    user_question = st.text_area("질문을 입력하세요:", height=100)
-    
+    user_question = st.text_area("질문을 입력하세요:", height=100
+                                
+    def extract_clean_text_from_gpts_response(response_text: str) -> str:
+        return re.sub(r"【.*?†.*?】", "", response_text).strip()
     # 답변 받기 버튼
     if st.button("답변 받기"):
         if user_question:
             with st.spinner("답변을 생성 중입니다..."):
-            # 🔽 이 부분을 아래처럼 수정
                 answer, success = get_answer_from_custom_gpts(user_question)
-            
+        
                 if success:
                     st.markdown("### 답변")
-                    st.write(answer)
-                
-                    # 데이터베이스에 질의응답 저장
+                    clean_answer = extract_clean_text_from_gpts_response(answer)  # 출처 제거
+                    st.write(clean_answer)
+
+                    # 데이터베이스에는 원문 answer를 저장 (필요시 clean_answer로 바꿔도 됨)
                     save_qa_to_db(submission_id, user_question, answer)
                 else:
                     st.error(f"답변 생성 중 오류가 발생했습니다: {answer}")
