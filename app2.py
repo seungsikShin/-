@@ -306,66 +306,72 @@ def update_submission_status(submission_id, status, email_sent=1) -> bool:
         return False
 
 # OpenAI API를 사용하여 질문에 답변하는 함수
-def get_answer_from_openai(question) -> Tuple[str, bool]:
+def get_answer_from_custom_gpts(question: str) -> Tuple[str, bool]:
     """
-    OpenAI API를 사용하여 질문에 답변합니다.
-    
-    Args:
-        question: 사용자 질문
-        
-    Returns:
-        (답변 내용, 성공 여부)
+    OpenAI GPTs (Assistants API)로 질문에 답변합니다.
     """
     try:
-         # 규정 텍스트 파일 읽기
-        with open("audit_rules.txt", "r", encoding="utf-8") as f:
-            audit_rules = f.read()
+        import time  # 시간 대기용
+
+        # OpenAI GPTs 관련 정보
+        assistant_id = "asst_oTip4nhZNJHinYxehJ7itwG9"
+        thread_id = "thread_fELywv3yHxSmzKhd31WumcgT"
 
         headers = {
             "Authorization": f"Bearer {openai_api_key}",
+            "OpenAI-Organization": openai_org_id,
             "Content-Type": "application/json"
         }
-        
-        # OpenAI API 엔드포인트
-        endpoint = "https://api.openai.com/v1/chat/completions"
-        
-        # 요청 데이터 설정
-        data = {
-            "model": "gpt-3.5-turbo",
-            "messages": [
-                {"role": "system", "content": f"OK금융그룹 감사 기준:\n{audit_rules}\n이 기준에 따라 질문자의 요청에 감사 관점에서 응답해 주세요."},
-                {"role": "user", "content": question}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 1000
-        }
-        
-        # API 요청 보내기
-        response = requests.post(endpoint, headers=headers, data=json.dumps(data), timeout=30)
-        
-        # 응답 확인 및 결과 반환
-        if response.status_code == 200:
-            result = response.json()
-            answer = result["choices"][0]["message"]["content"]
-            logger.info(f"OpenAI API 응답 성공: {len(answer)} 자")
-            return answer, True
-        else:
-            error_msg = f"API 오류: {response.status_code} - {response.text}"
-            logger.error(error_msg)
-            return error_msg, False
-    except requests.exceptions.Timeout:
-        error_msg = "OpenAI API 요청 시간 초과. 나중에 다시 시도해주세요."
-        logger.error(error_msg)
-        return error_msg, False
-    except requests.exceptions.RequestException as e:
-        error_msg = f"OpenAI API 요청 오류: {str(e)}"
-        logger.error(error_msg)
-        return error_msg, False
-    except Exception as e:
-        error_msg = f"오류 발생: {str(e)}"
-        logger.error(error_msg)
-        return error_msg, False
 
+        # 1. 메시지를 해당 thread에 추가
+        message_endpoint = f"https://api.openai.com/v1/threads/{thread_id}/messages"
+        message_payload = {
+            "role": "user",
+            "content": question
+        }
+        message_response = requests.post(message_endpoint, headers=headers, json=message_payload)
+        if message_response.status_code != 200:
+            return f"[1단계 실패] 메시지 추가 오류: {message_response.text}", False
+
+        # 2. Run 실행
+        run_endpoint = f"https://api.openai.com/v1/threads/{thread_id}/runs"
+        run_payload = {
+            "assistant_id": assistant_id
+        }
+        run_response = requests.post(run_endpoint, headers=headers, json=run_payload)
+        if run_response.status_code != 200:
+            return f"[2단계 실패] 실행 오류: {run_response.text}", False
+
+        run_id = run_response.json()["id"]
+
+        # 3. Run 상태 확인 (폴링)
+        run_status = "queued"
+        while run_status in ["queued", "in_progress"]:
+            status_check = requests.get(f"{run_endpoint}/{run_id}", headers=headers)
+            if status_check.status_code != 200:
+                return f"[3단계 실패] 상태 확인 오류: {status_check.text}", False
+            run_status = status_check.json().get("status", "")
+            if run_status == "completed":
+                break
+            elif run_status == "failed":
+                return "[3단계 실패] GPT 실행 실패", False
+            time.sleep(1.5)
+
+        # 4. 답변 가져오기
+        response = requests.get(message_endpoint, headers=headers)
+        if response.status_code != 200:
+            return "[4단계 실패] 메시지 조회 오류", False
+
+        messages = response.json().get("data", [])
+        for msg in reversed(messages):
+            if msg["role"] == "assistant":
+                return msg["content"], True
+
+        return "[4단계 실패] 어시스턴트 응답 없음", False
+
+    except Exception as e:
+        logger.error(f"커스텀 GPT 호출 오류: {str(e)}")
+        return f"[예외 발생] {str(e)}", False
 # 이메일 발송 함수 (보안 강화)
 def send_email(subject, body, to_email, attachments=None) -> Tuple[bool, str]:
     """
