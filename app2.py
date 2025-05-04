@@ -321,6 +321,7 @@ def get_answer_from_custom_gpts(question: str) -> Tuple[str, bool]:
             "Authorization": f"Bearer {openai_api_key}",
             "OpenAI-Organization": openai_org_id,
             "Content-Type": "application/json"
+            "OpenAI-Beta": "assistants=v2"
         }
 
         # 1. 메시지를 해당 thread에 추가
