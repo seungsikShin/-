@@ -606,7 +606,7 @@ elif menu == "질의응답":
     if st.button("답변 받기"):
         if user_question:
             with st.spinner("답변을 생성 중입니다..."):
-                answer, success = get_answer_from_custom_gpts(user_question)
+                answer, success = get_clean_answer_from_gpts(user_question)
         
                 if success:
                     st.markdown("### 답변")
