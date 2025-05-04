@@ -28,12 +28,12 @@ logger = logging.getLogger('audit_system')
 load_dotenv()
 
 # OpenAI API 정보 (하드코딩)
-openai_api_key = "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"
-openai_org_id  = "org-Hc5xlQNrBrQCgv7Sqr7ExCP4"
+openai_api_key = st.secrets["OPENAI_API_KEY"]
+openai_org_id  = st.secrets["OPENAI_ORG_ID"]
 
 # 이메일 정보 (예시, 실제로 입력해 주세요)
-from_email     = "audit.okh@gmail.com"       # 보내는 사람 이메일 주소
-from_password  = "ghfeldtmrkatkxla#019"      # 앱 비밀번호 또는 계정 비밀번호
+from_email     = st.secrets["EMAIL_ADDRESS"]
+from_password  = st.secrets["EMAIL_PASSWORD"]
 to_email       = "1504282@okfngroup.com"         # 수신자 이메일 주소
 
 
