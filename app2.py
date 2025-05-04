@@ -320,7 +320,7 @@ def get_answer_from_custom_gpts(question: str) -> Tuple[str, bool]:
         headers = {
             "Authorization": f"Bearer {openai_api_key}",
             "OpenAI-Organization": openai_org_id,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
             "OpenAI-Beta": "assistants=v2"
         }
 
