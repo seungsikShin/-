@@ -601,19 +601,19 @@ elif menu == "질의응답":
     if st.button("답변 받기"):
         if user_question:
             with st.spinner("답변을 생성 중입니다..."):
-                # OpenAI API에서 답변 받기
-                answer, success = get_answer_from_openai(user_question)
+            # 🔽 이 부분을 아래처럼 수정
+            answer, success = get_answer_from_custom_gpts(user_question)
+            
+            if success:
+                st.markdown("### 답변")
+                st.write(answer)
                 
-                if success:
-                    st.markdown("### 답변")
-                    st.write(answer)
-                    
-                    # 데이터베이스에 질의응답 저장
-                    save_qa_to_db(submission_id, user_question, answer)
-                else:
-                    st.error(f"답변 생성 중 오류가 발생했습니다: {answer}")
-        else:
-            st.warning("질문을 입력해 주세요.")
+                # 데이터베이스에 질의응답 저장
+                save_qa_to_db(submission_id, user_question, answer)
+            else:
+                st.error(f"답변 생성 중 오류가 발생했습니다: {answer}")
+    else:
+        st.warning("질문을 입력해 주세요.")
     
     # 다음 단계로 버튼
     col1, col2 = st.columns(2)
