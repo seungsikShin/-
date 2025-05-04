@@ -306,14 +306,14 @@ def update_submission_status(submission_id, status, email_sent=1) -> bool:
         return False
 
 # OpenAI API를 사용하여 질문에 답변하는 함수
-def get_answer_from_custom_gpts(question: str) -> Tuple[str, bool]:
+def get_clean_answer_from_gpts(question: str) -> Tuple[str, bool]:
     """
-    OpenAI GPTs (Assistants API)로 질문에 답변합니다.
+    Assistant GPTs API v2 기반 GPT에게 질문을 보내고,
+    최종 응답 텍스트만 추출해서 반환합니다.
     """
     try:
-        import time  # 시간 대기용
+        import time
 
-        # OpenAI GPTs 관련 정보
         assistant_id = "asst_oTip4nhZNJHinYxehJ7itwG9"
         thread_id = "thread_fELywv3yHxSmzKhd31WumcgT"
 
@@ -325,54 +325,45 @@ def get_answer_from_custom_gpts(question: str) -> Tuple[str, bool]:
         }
 
         # 1. 메시지를 해당 thread에 추가
-        message_endpoint = f"https://api.openai.com/v1/threads/{thread_id}/messages"
-        message_payload = {
+        message_url = f"https://api.openai.com/v1/threads/{thread_id}/messages"
+        add_msg = {
             "role": "user",
             "content": question
         }
-        message_response = requests.post(message_endpoint, headers=headers, json=message_payload)
-        if message_response.status_code != 200:
-            return f"[1단계 실패] 메시지 추가 오류: {message_response.text}", False
+        msg_response = requests.post(message_url, headers=headers, json=add_msg)
+        if msg_response.status_code != 200:
+            return f"[메시지 추가 실패] {msg_response.text}", False
 
-        # 2. Run 실행
-        run_endpoint = f"https://api.openai.com/v1/threads/{thread_id}/runs"
-        run_payload = {
-            "assistant_id": assistant_id
-        }
-        run_response = requests.post(run_endpoint, headers=headers, json=run_payload)
+        # 2. GPT 실행 요청 (Run 생성)
+        run_url = f"https://api.openai.com/v1/threads/{thread_id}/runs"
+        run_response = requests.post(run_url, headers=headers, json={"assistant_id": assistant_id})
         if run_response.status_code != 200:
-            return f"[2단계 실패] 실행 오류: {run_response.text}", False
+            return f"[실행 실패] {run_response.text}", False
 
         run_id = run_response.json()["id"]
 
-        # 3. Run 상태 확인 (폴링)
-        run_status = "queued"
-        while run_status in ["queued", "in_progress"]:
-            status_check = requests.get(f"{run_endpoint}/{run_id}", headers=headers)
-            if status_check.status_code != 200:
-                return f"[3단계 실패] 상태 확인 오류: {status_check.text}", False
-            run_status = status_check.json().get("status", "")
-            if run_status == "completed":
+        # 3. 실행 상태 확인 (폴링)
+        while True:
+            check = requests.get(f"{run_url}/{run_id}", headers=headers).json()
+            if check["status"] == "completed":
                 break
-            elif run_status == "failed":
-                return "[3단계 실패] GPT 실행 실패", False
+            elif check["status"] == "failed":
+                return "[실행 중 실패] GPT 실행 실패", False
             time.sleep(1.5)
 
-        # 4. 답변 가져오기
-        response = requests.get(message_endpoint, headers=headers)
-        if response.status_code != 200:
-            return "[4단계 실패] 메시지 조회 오류", False
+        # 4. 메시지 목록 조회 후 마지막 assistant 메시지의 텍스트 추출
+        msgs = requests.get(message_url, headers=headers).json()["data"]
+        for msg in reversed(msgs):
+            if msg.get("role") == "assistant":
+                for content in msg.get("content", []):
+                    if content.get("type") == "text":
+                        return content["text"]["value"].strip(), True
 
-        messages = response.json().get("data", [])
-        for msg in reversed(messages):
-            if msg["role"] == "assistant":
-                return msg["content"], True
-
-        return "[4단계 실패] 어시스턴트 응답 없음", False
+        return "[응답 없음] assistant 메시지를 찾을 수 없습니다.", False
 
     except Exception as e:
-        logger.error(f"커스텀 GPT 호출 오류: {str(e)}")
         return f"[예외 발생] {str(e)}", False
+        
 # 이메일 발송 함수 (보안 강화)
 def send_email(subject, body, to_email, attachments=None) -> Tuple[bool, str]:
     """
