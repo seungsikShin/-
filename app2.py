@@ -596,7 +596,7 @@ elif menu == "질의응답":
                 st.markdown(f"**답변:** {a}")
     
     # 사용자 질문 입력 받기
-    user_question = st.text_area("질문을 입력하세요:", height=100
+    user_question = st.text_area("질문을 입력하세요:", height=100)
                                 
     def extract_clean_text_from_gpts_response(response_text: str) -> str:
         return re.sub(r"【.*?†.*?】", "", response_text).strip()
