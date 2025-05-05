@@ -15,6 +15,87 @@ import mimetypes
 import re
 import ssl
 from typing import List, Dict, Optional, Tuple, Any
+from docx import Document  # ✅ Word 파일 생성을 위한 추가
+import zipfile
+
+# 이하 생략된 부분은 기존 코드 그대로 유지...
+
+# ✅ GPT 감사보고서 docx 생성 함수
+
+def generate_audit_report_with_gpt(submission_id, department, manager, phone, contract_name,
+                                   contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
+    try:
+        uploaded_list_str = ", ".join(uploaded_files) if uploaded_files else "없음"
+        if missing_files_with_reasons:
+            missing_items = "\n".join([f"- {name}: {reason}" for name, reason in missing_files_with_reasons])
+        else:
+            missing_items = "없음"
+
+        prompt = f"""
+당신은 일상감사 실무자의 업무를 보조하는 AI 감사 도우미입니다.
+다음은 감사 접수 정보입니다:
+
+- 접수 ID: {submission_id}
+- 접수 부서: {department}
+- 담당자: {manager} ({phone})
+- 계약명: {contract_name}
+- 계약 체결일: {contract_date}
+- 계약금액: {contract_amount}
+- 제출된 자료: {uploaded_list_str}
+- 누락된 자료 및 사유:
+{missing_items}
+
+위 정보를 바탕으로 다음 항목을 포함한 일상감사 보고서 초안을 작성해 주세요:
+1. 감사 개요  
+2. 계약 요약  
+3. 자료 제출 현황  
+4. 누락 자료 및 추가 요청 사항  
+5. 향후 검토 예정 사항  
+
+형식은 워드 스타일로 작성해 주세요.
+        """.strip()
+
+        answer, success = get_clean_answer_from_gpts(prompt)
+        if not success:
+            return None
+
+        document = Document()
+        document.add_heading('일상감사 보고서 초안', level=0)
+        for line in answer.strip().split("\n"):
+            if line.strip().startswith("#"):
+                document.add_heading(line.replace("#", "").strip(), level=1)
+            else:
+                document.add_paragraph(line.strip())
+
+        report_folder = os.path.join(base_folder, "draft_reports")
+        os.makedirs(report_folder, exist_ok=True)
+        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
+        document.save(report_path)
+        return report_path
+
+    except Exception as e:
+        logger.error(f"GPT 보고서 생성 오류: {str(e)}")
+        return None
+
+# 📌 "접수 완료 및 이메일 발송" 버튼 아래 삽입할 코드
+
+        # ✅ GPT 감사보고서 docx 생성
+        report_path = generate_audit_report_with_gpt(
+            submission_id=submission_id,
+            department=department,
+            manager=manager,
+            phone=phone,
+            contract_name=contract_name,
+            contract_date=contract_date,
+            contract_amount=contract_amount_formatted,
+            uploaded_files=[f for f, _ in uploaded_db_files],
+            missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
+        )
+
+        # ✅ GPT 보고서 첨부
+        if report_path and os.path.exists(report_path):
+            email_attachments.append(report_path)
+            body += "* GPT 기반 감사보고서 초안이 첨부되어 있습니다.\n"
 
 # 로깅 설정
 logging.basicConfig(
