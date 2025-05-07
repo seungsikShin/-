@@ -1,23 +1,20 @@
 import streamlit as st
-# ──────────────────────────────────────────────────────
-# 반드시 첫 번째 Streamlit 호출입니다.
+# ← 이 줄이 첫 번째 Streamlit 호출이어야만 합니다
 st.set_page_config(
     page_title="일상감사 접수 시스템",
     page_icon="📋",
-    layout="wide",
+    layout="wide"
 )
-# ──────────────────────────────────────────────────────
 
 # 이제부터 다른 import
-from dotenv import load_dotenv
-load_dotenv()
-
 import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 import datetime, hashlib
+from dotenv import load_dotenv
+load_dotenv()
 import requests
 import json
 import sqlite3
@@ -28,13 +25,13 @@ import ssl
 from typing import List, Dict, Optional, Tuple, Any
 from docx import Document
 import zipfile
-# 세션 초기화
+
+# ─── 여기서부터 st.session_state, st.sidebar.radio 등 모든 Streamlit API 호출 ───
 today = datetime.datetime.now().strftime("%Y%m%d")
 if "submission_id" not in st.session_state:
     st.session_state["submission_id"] = f"AUDIT-{today}-{hashlib.md5(today.encode()).hexdigest()[:6]}"
 submission_id = st.session_state["submission_id"]
 
-# 메뉴 초기화
 if "menu" not in st.session_state:
     st.session_state["menu"] = "파일 업로드"
 menu = st.sidebar.radio(
@@ -43,6 +40,9 @@ menu = st.sidebar.radio(
     index=0,
     key="menu"
 )
+
+# … 이하 기존 로직 …
+
 
 # ✅ GPT 감사보고서 docx 생성 함수
 
