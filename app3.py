@@ -524,7 +524,7 @@ st.sidebar.info(f"접수 ID: {submission_id}")
 st.sidebar.markdown("---")
 menu = st.sidebar.radio(
     "메뉴 선택",
-    ["질의응답", "파일 업로드", "접수 완료"]  # 질의응답을 첫 번째로 이동
+    ["파일 업로드", "접수 완료"]  # 질의응답을 첫 번째로 이동
 )
 
 # 업로드된 파일 및 사유를 관리할 딕셔너리
@@ -644,72 +644,17 @@ if menu == "파일 업로드":
     
     # 다음 단계로 버튼
     if st.button('다음 단계: 접수 완료', key='next_to_complete'):
+       incomplete_files = [
+        file for file in required_files
+        if uploaded_files.get(file) is None and not reasons.get(file)
+    ]
+    
+    if incomplete_files:
+        st.warning(f"다음 파일에 대해 업로드 또는 사유 입력이 필요합니다:\n\n- " + "\n- ".join(incomplete_files))
+    else:
         st.session_state['menu'] = '접수 완료'
-        st.rerun()
-
-
-# 질의응답 페이지
-elif menu == "질의응답":
-    st.title("💬 일상감사 질의응답 시스템 GPT")
-    st.markdown("일상감사 접수전, 질문이 있으시면 아래에 입력해주세요.")
-    
-    # 이전 질의응답 기록 표시
-    conn = sqlite3.connect('audit_system.db')
-    c = conn.cursor()
-    c.execute("SELECT question, answer FROM qa_records WHERE submission_id = ? ORDER BY created_at DESC", (submission_id,))
-    qa_records = c.fetchall()
-    conn.close()
-    
-    if qa_records:
-        st.markdown("### 이전 질의응답 기록")
-        for q, a in qa_records:
-            with st.expander(f"Q: {q[:50]}..."):
-                st.markdown(f"**질문:** {q}")
-                st.markdown(f"**답변:** {a}")
-    
-    # 사용자 질문 입력 받기
-    user_question = st.text_area("질문을 입력하세요:", height=100)
-                                
-    def extract_clean_text_from_gpts_response(response_obj: dict) -> str:
-        """
-        GPTS 응답 딕셔너리에서 text.value만 꺼내고 출처 제거
-        """
-        if isinstance(response_obj, dict) and "text" in response_obj:
-            raw_text = response_obj["text"]["value"]
-        elif isinstance(response_obj, str):
-            raw_text = response_obj
-        else:
-            return "⚠️ GPT 응답 형식이 잘못되었습니다."
-
-        return re.sub(r"【.*?†.*?】", "", raw_text).strip()
-    
-    # 답변 받기 버튼
-    if st.button("답변 받기"):
-        if user_question:
-            with st.spinner("답변을 생성 중입니다..."):
-                answer, success = get_clean_answer_from_gpts(user_question)
-        
-                if success:
-                    st.markdown("### 답변")
-                    clean_answer = extract_clean_text_from_gpts_response(answer)
-                    st.write(clean_answer)
-
-                    # 데이터베이스에는 원문 answer를 저장 (필요시 clean_answer로 바꿔도 됨)
-                    save_qa_to_db(submission_id, user_question, answer)
-                else:
-                    st.error(f"답변 생성 중 오류가 발생했습니다: {answer}")
-        else:
-            st.warning("질문을 입력해 주세요.")
-    
-    # 다음 단계로 버튼
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button('다음 단계: 파일 업로드', key='next_to_upload'):
-            st.session_state['menu'] = '파일 업로드'
-            st.rerun()
-
-
-
+        st.rerun() 
+      
 # 접수 완료 페이지
 elif menu == "접수 완료":
     st.title("✅ 일상감사 접수 완료")
