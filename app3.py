@@ -14,6 +14,14 @@ today = datetime.datetime.now().strftime("%Y%m%d")
 if "submission_id" not in st.session_state:
     st.session_state["submission_id"] = f"AUDIT-{today}-{hashlib.md5(today.encode()).hexdigest()[:6]}"
 submission_id = st.session_state["submission_id"]
+if "menu" not in st.session_state:
+    st.session_state["menu"] = "파일 업로드"
+menu = st.sidebar.radio(
+    "메뉴 선택",
+    ["파일 업로드", "접수 완료"],
+    index=0,
+    key="menu"
+)
 import logging
 import mimetypes
 import re
@@ -647,7 +655,7 @@ if menu == "파일 업로드":
             st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete))
         else:
             # 페이지 전환
-            st.experimental_set_query_params(menu="접수 완료")
+            st.session_state["menu"] = "접수 완료"
             st.rerun()
 
 
