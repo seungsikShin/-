@@ -490,18 +490,25 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# 쿼리 파라미터에서 메뉴 초기값 가져오기
+query_params = st.experimental_get_query_params()
+default_menu = query_params.get("menu", ["파일 업로드"])[0]
+if default_menu not in menu_options:
+    default_menu = "파일 업로드"
+
 # 사이드바 메뉴
 st.sidebar.title("📋 일상감사 접수 시스템")
 st.sidebar.info(f"접수 ID: {submission_id}")
 st.sidebar.markdown("---")
 
-# 메뉴 선택 라디오 버튼 (이게 session_state["menu"]를 관리함)
+# 메뉴 선택 라디오 버튼 (쿼리 파라미터 기반 index 설정)
 menu = st.sidebar.radio(
     "메뉴 선택",
     menu_options,
-    index=menu_options.index(st.session_state["menu"]),
-    key="menu"  # ✅ 이 key가 session_state["menu"]를 자동 업데이트함
+    index=menu_options.index(default_menu),
+    key="menu"  # 이 key가 session_state["menu"]를 자동 관리함
 )
+
 
 # 업로드된 파일 및 사유를 관리할 딕셔너리
 uploaded_files = {}
@@ -618,16 +625,16 @@ if menu == "파일 업로드":
     
     # 다음 단계로 버튼
     if st.button('다음 단계: 접수 완료', key='next_to_complete'):
-      incomplete_files = [
+    incomplete_files = [
         file for file in required_files
         if uploaded_files.get(file) is None and not reasons.get(file)
-      ]
+    ]
 
-      if incomplete_files:
-          st.warning("다음 파일에 대해 업로드 또는 사유 입력이 필요합니다:\n\n- " + "\n- ".join(incomplete_files))
-      else:
-          st.session_state['menu'] = '접수 완료'
-          st.rerun()
+    if incomplete_files:
+        st.warning("다음 파일에 대해 업로드 또는 사유 입력이 필요합니다:\n\n- " + "\n- ".join(incomplete_files))
+    else:
+        st.experimental_set_query_params(menu="접수 완료")
+        st.rerun()
 
       
 # 접수 완료 페이지
