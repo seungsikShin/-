@@ -1,11 +1,12 @@
 import streamlit as st
-# ← 이 줄이 첫 번째 Streamlit 호출이어야만 합니다
+# ← import 바로 다음 줄에만 이것! 다른 st.* 호출 NO
 st.set_page_config(
     page_title="일상감사 접수 시스템",
     page_icon="📋",
-    layout="wide"
+    layout="wide",
 )
-
+from dotenv import load_dotenv  
+load_dotenv()
 # 이제부터 다른 import
 import os
 import smtplib
@@ -13,8 +14,6 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 import datetime, hashlib
-from dotenv import load_dotenv
-load_dotenv()
 import requests
 import json
 import sqlite3
@@ -26,14 +25,12 @@ from typing import List, Dict, Optional, Tuple, Any
 from docx import Document
 import zipfile
 
-# ─── 여기서부터 st.session_state, st.sidebar.radio 등 모든 Streamlit API 호출 ───
+# 2) 여기서부터 Streamlit 호출 시작
 today = datetime.datetime.now().strftime("%Y%m%d")
 if "submission_id" not in st.session_state:
     st.session_state["submission_id"] = f"AUDIT-{today}-{hashlib.md5(today.encode()).hexdigest()[:6]}"
 submission_id = st.session_state["submission_id"]
 
-if "menu" not in st.session_state:
-    st.session_state["menu"] = "파일 업로드"
 menu = st.sidebar.radio(
     "메뉴 선택",
     ["파일 업로드", "접수 완료"],
