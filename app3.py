@@ -625,16 +625,16 @@ if menu == "파일 업로드":
     
     # 다음 단계로 버튼
     if st.button('다음 단계: 접수 완료', key='next_to_complete'):
-    incomplete_files = [
-        file for file in required_files
-        if uploaded_files.get(file) is None and not reasons.get(file)
-    ]
+        incomplete_files = [
+            file for file in required_files
+            if uploaded_files.get(file) is None and not reasons.get(file)
+        ]
 
-    if incomplete_files:
-        st.warning("다음 파일에 대해 업로드 또는 사유 입력이 필요합니다:\n\n- " + "\n- ".join(incomplete_files))
-    else:
-        st.experimental_set_query_params(menu="접수 완료")
-        st.rerun()
+        if incomplete_files:
+            st.warning("다음 파일에 대해 업로드 또는 사유 입력이 필요합니다:\n\n- " + "\n- ".join(incomplete_files))
+        else:
+            st.experimental_set_query_params(menu="접수 완료")
+            st.rerun()
 
       
 # 접수 완료 페이지
