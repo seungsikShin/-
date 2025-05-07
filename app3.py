@@ -27,8 +27,17 @@ import zipfile
 
 # 2) 여기서부터 Streamlit 호출 시작
 today = datetime.datetime.now().strftime("%Y%m%d")
+# 세션 쿠키 관리 추가
+import uuid
+
+# 앱 시작 시 새로운 세션 ID 생성
+if "cookie_session_id" not in st.session_state:
+    st.session_state["cookie_session_id"] = str(uuid.uuid4())
+    
+# submission_id 생성 시 쿠키 세션 ID 포함
 if "submission_id" not in st.session_state:
-    st.session_state["submission_id"] = f"AUDIT-{today}-{hashlib.md5(today.encode()).hexdigest()[:6]}"
+    session_id = st.session_state["cookie_session_id"]
+    st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
 submission_id = st.session_state["submission_id"]
 
 # ✅ GPT 감사보고서 docx 생성 함수
@@ -199,6 +208,10 @@ today_folder = os.path.join(base_folder, upload_date)
 if not os.path.exists(today_folder):
     os.makedirs(today_folder)
 
+session_folder = os.path.join(today_folder, st.session_state["submission_id"])
+if not os.path.exists(session_folder):
+    os.makedirs(session_folder)
+    
 # 필수 업로드 파일 목록 (누락된 파일 체크용)
 required_files = [
     "계약서 파일",
@@ -235,30 +248,20 @@ def validate_file(file) -> Tuple[bool, str]:
 
 # 파일 저장 함수
 def save_uploaded_file(uploaded_file, folder_path) -> Optional[str]:
-    """
-    업로드된 파일을 저장합니다.
-    
-    Args:
-        uploaded_file: 업로드된 파일 객체
-        folder_path: 저장할 폴더 경로
-        
-    Returns:
-        저장된 파일 경로 또는 None (오류 발생 시)
-    """
     try:
         if uploaded_file is not None:
             # 파일명 보안 처리 (특수문자 제거)
             safe_filename = re.sub(r'[^\w\s.-]', '', uploaded_file.name)
             safe_filename = safe_filename.replace(' ', '_')
             
-            # 중복 파일명 처리
-            file_path = os.path.join(folder_path, safe_filename)
+            # 세션 폴더에 저장하도록 변경
+            file_path = os.path.join(session_folder, safe_filename)
             counter = 1
             while os.path.exists(file_path):
                 name, ext = os.path.splitext(safe_filename)
-                file_path = os.path.join(folder_path, f"{name}_{counter}{ext}")
+                file_path = os.path.join(session_folder, f"{name}_{counter}{ext}")
                 counter += 1
-                
+
             # 파일 저장
             with open(file_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
@@ -601,7 +604,8 @@ if menu == "파일 업로드":
                 
                 if is_valid:
                     # 파일 저장
-                    file_path = save_uploaded_file(uploaded_files[file], today_folder)
+                    file_path = save_uploaded_file(uploaded_files[file], session_folder)
+
                     if file_path:
                         # 데이터베이스에 파일 정보 저장
                         file_type = os.path.splitext(uploaded_files[file].name)[1]
