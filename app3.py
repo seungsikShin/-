@@ -188,9 +188,6 @@ today_folder = os.path.join(base_folder, upload_date)
 if not os.path.exists(today_folder):
     os.makedirs(today_folder)
 
-# 고유한 제출 ID 생성 (초기값)
-submission_id = f"AUDIT-{upload_date}-{hashlib.md5(str(datetime.datetime.now()).encode()).hexdigest()[:6]}"
-
 # 필수 업로드 파일 목록 (누락된 파일 체크용)
 required_files = [
     "계약서 파일",
@@ -492,12 +489,12 @@ st.set_page_config(
 )
 
 # 쿼리 파라미터에서 메뉴 초기값 가져오기
-default_menu = st.query_params.get("menu", ["파일 업로드"])
+default_menu = st.query_params.get("menu", "파일 업로드")
 if isinstance(default_menu, list):
     default_menu = default_menu[0]
 if default_menu not in menu_options:
     default_menu = "파일 업로드"
-
+  
 # 사이드바 메뉴
 st.sidebar.title("📋 일상감사 접수 시스템")
 st.sidebar.info(f"접수 ID: {submission_id}")
@@ -552,10 +549,11 @@ if menu == "파일 업로드":
     if department:
         # 부서명의 첫 글자만 추출하여 ID에 포함
         safe_dept = re.sub(r'[^\w]', '', department)[:6]
-        submission_id = f"AUDIT-{upload_date}-{safe_dept}"
+        st.session_state["submission_id"] = f"AUDIT-{upload_date}-{safe_dept}"
     
     # 접수 ID 표시
-    st.info(f"접수 ID: {submission_id}")
+    sid = st.session_state.get("submission_id", "")
+    st.info(f"접수 ID: {sid}")
     st.markdown("---")
     
     # 접수 정보 저장
@@ -636,22 +634,23 @@ if menu == "파일 업로드":
     progress_container.info(f"진행 상황: {uploaded_count}/{total_files} 완료")
     
     # 다음 단계로 버튼
-    if st.button('다음 단계: 접수 완료', key='next_to_complete'):
-        incomplete_files = [
-            file for file in required_files
-            if uploaded_files.get(file) is None and not reasons.get(file)
+    if st.button("다음 단계: 접수 완료", key="next_to_complete"):
+        incomplete = [
+            f for f in required_files
+            if uploaded_files.get(f) is None and not reasons.get(f)
         ]
-
-        if incomplete_files:
-            st.warning("다음 파일에 대해 업로드 또는 사유 입력이 필요합니다:\n\n- " + "\n- ".join(incomplete_files))
+        if incomplete:
+            st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete))
         else:
+            # ✅ 여기 안에서만 session_state 저장
             st.session_state["department"] = department
-            st.session_state["manager"] = manager
-            st.session_state["phone"] = phone
+            st.session_state["manager"]    = manager
+            st.session_state["phone"]      = phone
             st.session_state["contract_name"] = contract_name
             st.session_state["contract_date"] = contract_date
             st.session_state["contract_amount_formatted"] = contract_amount_formatted
-            
+           
+            # 페이지 전환
             st.experimental_set_query_params(menu="접수 완료")
             st.rerun()
 
