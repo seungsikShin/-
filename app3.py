@@ -664,11 +664,17 @@ elif menu == "접수 완료":
     sub_id = st.session_state["submission_id"]
     conn = sqlite3.connect('audit_system.db')
     c = conn.cursor()
-    c.execute(
-    "SELECT department, manager, phone, contract_name, contract_date, contract_amount FROM submissions WHERE submission_id = ?",
-    (sub_id,)
-    )
-    department, manager, phone, contract_name, contract_date, contract_amount = c.fetchone()
+    c.execute("""
+        SELECT department, manager, phone, contract_name, contract_date, contract_amount
+        FROM submissions
+        WHERE submission_id = ?
+    """, (sub_id,))
+    result = c.fetchone()
+    if result:
+        department, manager, phone, contract_name, contract_date, contract_amount = result
+    else:
+        st.error("접수 정보를 찾을 수 없습니다. 파일 업로드 페이지에서 접수 정보를 먼저 입력해주세요.")
+        department, manager, phone, contract_name, contract_date, contract_amount = "", "", "", "", "", ""
 
     # 접수 내용 요약
     st.markdown("### 접수 내용 요약")
