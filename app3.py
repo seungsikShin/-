@@ -482,6 +482,8 @@ st.set_page_config(
     page_icon="📋",
     layout="wide",
     initial_sidebar_state="expanded"
+ if "menu" not in st.session_state:
+    st.session_state["menu"] = "파일 업로드" 
 )
 
 # 사이드바 메뉴 - 순서 변경
