@@ -706,10 +706,6 @@ elif menu == "접수 완료":
             # ZIP 파일이 없으면 개별 파일 첨부
             email_attachments.extend(uploaded_file_list)
         
-        # 질의응답 파일 첨부
-        if qa_file_path and os.path.exists(qa_file_path):
-            email_attachments.append(qa_file_path)
-        
         # 이메일 본문 작성
         body = f"일상감사 접수 ID: {submission_id}\n"
         body += f"접수일자: {upload_date}\n\n"
