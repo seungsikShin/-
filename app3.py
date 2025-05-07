@@ -1,21 +1,31 @@
 import streamlit as st
 
-# ───────────────────────────────────
-# 이 줄이 절대로 첫 번째 Streamlit 호출이어야 합니다!
+# ⚠️ 가장 먼저 페이지 설정
 st.set_page_config(
     page_title="일상감사 접수 시스템",
     page_icon="📋",
-    layout="wide"
+    layout="wide",
 )
 # ───────────────────────────────────
+from dotenv import load_dotenv
+load_dotenv()
 
-# 이제부터 import 나 세션 초기화, 메뉴 등 어떤 st.* 호출도 안전합니다
 import os
 import smtplib
 from email.mime.text import MIMEText
-# ... 그 외 모든 import …
-
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 import datetime, hashlib
+import requests
+import json
+import sqlite3
+import logging
+import mimetypes
+import re
+import ssl
+from typing import List, Dict, Optional, Tuple, Any
+from docx import Document
+import zipfile
 
 # 세션 초기화
 today = datetime.datetime.now().strftime("%Y%m%d")
@@ -32,17 +42,6 @@ menu = st.sidebar.radio(
     index=0,
     key="menu"
 )
-import logging
-import mimetypes
-import re
-import ssl
-from typing import List, Dict, Optional, Tuple, Any
-from docx import Document  # ✅ Word 파일 생성을 위한 추가
-import zipfile
-
-# ─── 여기서부터 기존 코드 이어서 작성 ───
-
-# 이하 생략된 부분은 기존 코드 그대로 유지...
 
 # ✅ GPT 감사보고서 docx 생성 함수
 
