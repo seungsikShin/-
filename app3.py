@@ -486,14 +486,23 @@ st.set_page_config(
     st.session_state["menu"] = "파일 업로드" 
 )
 
-# 사이드바 메뉴 - 순서 변경
+# ✅ session_state 초기화
+if "menu" not in st.session_state:
+    st.session_state["menu"] = "파일 업로드"
+
+# ✅ 메뉴 정의 및 상태 반영
+menu_options = ["파일 업로드", "접수 완료"]
+menu_index = menu_options.index(st.session_state["menu"])
+
 st.sidebar.title("📋 일상감사 접수 시스템")
 st.sidebar.info(f"접수 ID: {submission_id}")
 st.sidebar.markdown("---")
+
 menu = st.sidebar.radio(
     "메뉴 선택",
-    ["파일 업로드", "접수 완료"]  # 질의응답을 첫 번째로 이동
-    key="menu"  # ✅ key를 부여해야 session_state 작동
+    menu_options,
+    index=menu_index,
+    key="menu"
 )
 
 # 업로드된 파일 및 사유를 관리할 딕셔너리
