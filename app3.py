@@ -168,18 +168,6 @@ def init_db():
         )
         ''')
         
-        # 질의응답 내역 테이블 생성
-        c.execute('''
-        CREATE TABLE IF NOT EXISTS qa_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            submission_id TEXT,
-            question TEXT,
-            answer TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (submission_id) REFERENCES submissions (submission_id)
-        )
-        ''')
-        
         conn.commit()
         conn.close()
         logger.info("데이터베이스 초기화 완료")
@@ -316,28 +304,6 @@ def save_missing_reason_to_db(submission_id, file_name, reason) -> bool:
         return True
     except Exception as e:
         logger.error(f"DB 사유 저장 오류: {str(e)}")
-        return False
-
-# 데이터베이스에 질의응답 내역 저장
-def save_qa_to_db(submission_id, question, answer) -> bool:
-    """
-    질의응답 내역을 데이터베이스에 저장합니다.
-    
-    Returns:
-        성공 여부
-    """
-    try:
-        conn = sqlite3.connect('audit_system.db')
-        c = conn.cursor()
-        c.execute('''
-        INSERT INTO qa_records (submission_id, question, answer)
-        VALUES (?, ?, ?)
-        ''', (submission_id, question, answer))
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        logger.error(f"DB 질의응답 저장 오류: {str(e)}")
         return False
 
 # 데이터베이스에 접수 내역 저장 (접수 정보 포함)
@@ -683,27 +649,6 @@ elif menu == "접수 완료":
         for file_name, reason in missing_db_files:
             st.info(f"📝 {file_name}: {reason}")
     
-    # 질의응답 내용
-    c.execute("SELECT question, answer FROM qa_records WHERE submission_id = ?", (submission_id,))
-    qa_db_records = c.fetchall()
-    conn.close()
-    
-    if qa_db_records:
-        st.markdown("#### 질의응답 내용")
-        for question, answer in qa_db_records:
-            with st.expander(f"Q: {question[:50]}..."):
-                st.markdown(f"**질문:** {question}")
-                st.markdown(f"**답변:** {answer}")
-    
-    # 누락된 파일 확인
-    current_missing_files = []
-    for file in required_files:
-        file_uploaded = any(file == f_name for f_name, _ in uploaded_db_files)
-        file_reason_given = any(file == f_name for f_name, _ in missing_db_files)
-        
-        if not file_uploaded and not file_reason_given:
-            current_missing_files.append(file)
-    
     # 이메일 발송 섹션
     st.markdown("### 이메일 발송")
     
@@ -713,38 +658,12 @@ elif menu == "접수 완료":
     # 이메일 제목 및 추가 메시지
     email_subject = st.text_input("이메일 제목", value=f"일상감사 접수: {submission_id}")
     additional_message = st.text_area("추가 메시지", value="")
-    
-    # 접수 완료 버튼
+   
 # 접수 완료 버튼
 if st.button('접수 완료 및 이메일 발송'):
     # 누락된 파일이 있고 사유도 입력되지 않은 경우, 이메일 발송하지 않고 경고 메시지 출력
     if current_missing_files:
         st.warning(f"누락된 파일: {', '.join(current_missing_files)}. 업로드 또는 사유를 입력해 주세요.")
-    else:
-        # 질의응답 내역을 파일로 저장
-        qa_file_path = None
-        if qa_db_records:
-            qa_text = f"# 일상감사 질의응답 내역 (접수 ID: {submission_id})\n\n"
-            for question, answer in qa_db_records:
-                qa_text += f"## 질문:\n{question}\n\n"
-                qa_text += f"## 답변:\n{answer}\n\n---\n\n"
-            
-            # 질의응답 파일 저장
-            qa_folder = os.path.join(base_folder, "qa_records")
-            if not os.path.exists(qa_folder):
-                os.makedirs(qa_folder)
-            
-            qa_file_path = os.path.join(qa_folder, f"질의응답_{submission_id}.txt")
-            with open(qa_file_path, "w", encoding="utf-8") as f:
-                f.write(qa_text)
-            
-            # 질의응답 내역 다운로드 버튼 제공
-            st.download_button(
-                label="질의응답 내역 다운로드",
-                data=qa_text,
-                file_name=f"질의응답_{submission_id}.txt",
-                mime="text/plain"
-            )
         
         # 업로드된 파일들을 ZIP으로 압축
         zip_file_path = None
@@ -854,10 +773,6 @@ if st.button('접수 완료 및 이메일 발송'):
             else:
                 st.error(f"이메일 발송 중 오류가 발생했습니다: {message}")
 
-    # 이전 단계로 버튼
-    if st.button('이전 단계: 질의응답', key='back_to_qa'):
-        st.session_state['menu'] = '질의응답'
-        st.rerun()
 
 # 페이지 하단 정보
 st.sidebar.markdown("---")
