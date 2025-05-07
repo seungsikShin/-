@@ -727,8 +727,6 @@ elif menu == "접수 완료":
         # 첨부 파일 안내 추가
         if zip_file_path:
             body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
-        if qa_file_path:
-            body += "* 질의응답 내역이 첨부 파일로 포함되어 있습니다.\n"
         
         # 이메일 발송
         with st.spinner("이메일을 발송 중입니다..."):
