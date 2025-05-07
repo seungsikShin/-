@@ -760,15 +760,16 @@ elif menu == "접수 완료":
         # ✅ [여기] GPT 보고서 생성 및 첨부 추가
         report_path = generate_audit_report_with_gpt(
             submission_id=submission_id,
-            department=department,
-            manager=manager,
-            phone=phone,
-            contract_name=contract_name,
-            contract_date=contract_date,
-            contract_amount=contract_amount_formatted,
+            department=st.session_state.get("department", ""),
+            manager=st.session_state.get("manager", ""),
+            phone=st.session_state.get("phone", ""),
+            contract_name=st.session_state.get("contract_name", ""),
+            contract_date=st.session_state.get("contract_date", ""),
+            contract_amount=st.session_state.get("contract_amount_formatted", ""),
             uploaded_files=[f for f, _ in uploaded_db_files],
             missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
         )
+
         if report_path and os.path.exists(report_path):
             email_attachments.append(report_path)
             body += "* GPT 기반 감사보고서 초안이 첨부되어 있습니다.\n"
