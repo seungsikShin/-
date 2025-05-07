@@ -82,15 +82,16 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
         # ✅ GPT 감사보고서 docx 생성
         report_path = generate_audit_report_with_gpt(
             submission_id=submission_id,
-            department=department,
-            manager=manager,
-            phone=phone,
-            contract_name=contract_name,
-            contract_date=contract_date,
-            contract_amount=contract_amount_formatted,
+            department=st.session_state["department"],
+            manager=st.session_state["manager"],
+            phone=st.session_state["phone"],
+            contract_name=st.session_state["contract_name"],
+            contract_date=st.session_state["contract_date"],
+            contract_amount=st.session_state["contract_amount_formatted"],
             uploaded_files=[f for f, _ in uploaded_db_files],
             missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
-        )
+      )
+
 
         # ✅ GPT 보고서 첨부
         if report_path and os.path.exists(report_path):
