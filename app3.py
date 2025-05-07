@@ -491,6 +491,7 @@ st.sidebar.markdown("---")
 menu = st.sidebar.radio(
     "메뉴 선택",
     ["파일 업로드", "접수 완료"]  # 질의응답을 첫 번째로 이동
+    key="menu"  # ✅ key를 부여해야 session_state 작동
 )
 
 # 업로드된 파일 및 사유를 관리할 딕셔너리
@@ -727,7 +728,21 @@ elif menu == "접수 완료":
         # 첨부 파일 안내 추가
         if zip_file_path:
             body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
-        
+        # ✅ [여기] GPT 보고서 생성 및 첨부 추가
+        report_path = generate_audit_report_with_gpt(
+            submission_id=submission_id,
+            department=department,
+            manager=manager,
+            phone=phone,
+            contract_name=contract_name,
+            contract_date=contract_date,
+            contract_amount=contract_amount_formatted,
+            uploaded_files=[f for f, _ in uploaded_db_files],
+            missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
+        )
+        if report_path and os.path.exists(report_path):
+            email_attachments.append(report_path)
+            body += "* GPT 기반 감사보고서 초안이 첨부되어 있습니다.\n"
         # 이메일 발송
         with st.spinner("이메일을 발송 중입니다..."):
             success, message = send_email(email_subject, body, recipient_email, email_attachments)
