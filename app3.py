@@ -10,6 +10,10 @@ import json
 from dotenv import load_dotenv
 import sqlite3
 import hashlib
+today = datetime.datetime.now().strftime("%Y%m%d")
+if "submission_id" not in st.session_state:
+    st.session_state["submission_id"] = f"AUDIT-{today}-{hashlib.md5(today.encode()).hexdigest()[:6]}"
+submission_id = st.session_state["submission_id"]
 import logging
 import mimetypes
 import re
