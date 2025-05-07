@@ -479,10 +479,10 @@ init_db()
 if "menu" not in st.session_state:
     st.session_state["menu"] = "파일 업로드"
 
-# ✅ 메뉴 정의
+# 메뉴 정의
 menu_options = ["파일 업로드", "접수 완료"]
 
-# ✅ Streamlit UI 구성
+# UI 구성
 st.set_page_config(
     page_title="일상감사 접수 시스템",
     page_icon="📋",
@@ -490,22 +490,18 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ✅ 사이드바 구성
+# 사이드바 메뉴
 st.sidebar.title("📋 일상감사 접수 시스템")
 st.sidebar.info(f"접수 ID: {submission_id}")
 st.sidebar.markdown("---")
 
-# ✅ 메뉴 라디오 버튼
+# 메뉴 선택 라디오 버튼 (이게 session_state["menu"]를 관리함)
 menu = st.sidebar.radio(
     "메뉴 선택",
     menu_options,
     index=menu_options.index(st.session_state["menu"]),
-    key="menu"
+    key="menu"  # ✅ 이 key가 session_state["menu"]를 자동 업데이트함
 )
-
-# ✅ 선택 반영 (중복 설정 방지)
-st.session_state["menu"] = menu
-
 
 # 업로드된 파일 및 사유를 관리할 딕셔너리
 uploaded_files = {}
