@@ -646,17 +646,10 @@ if menu == "파일 업로드":
         if incomplete:
             st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete))
         else:
-            # ✅ 여기 안에서만 session_state 저장
-            st.session_state["department"] = department
-            st.session_state["manager"]    = manager
-            st.session_state["phone"]      = phone
-            st.session_state["contract_name"] = contract_name
-            st.session_state["contract_date"] = contract_date
-            st.session_state["contract_amount_formatted"] = contract_amount_formatted
-           
             # 페이지 전환
             st.experimental_set_query_params(menu="접수 완료")
             st.rerun()
+
 
 
       
@@ -664,14 +657,26 @@ if menu == "파일 업로드":
 elif menu == "접수 완료":
     st.title("✅ 일상감사 접수 완료")
 
+    # ─── DB에서 접수 정보 불러오기 ───
+    sub_id = st.session_state["submission_id"]
+    conn = sqlite3.connect('audit_system.db')
+    c = conn.cursor()
+    c.execute("""
+        SELECT department, manager, phone, contract_name, contract_date, contract_amount
+        FROM submissions
+        WHERE submission_id = ?
+    """, (sub_id,))
+    department, manager, phone, contract_name, contract_date, contract_amount = c.fetchone()
+
     # 접수 내용 요약
     st.markdown("### 접수 내용 요약")
 
     # 업로드된 파일 목록
     uploaded_file_list = []
-    conn = sqlite3.connect('audit_system.db')
-    c = conn.cursor()
-    c.execute("SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?", (submission_id,))
+    c.execute(
+        "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?",
+        (sub_id,)
+    )
     uploaded_db_files = c.fetchall()
 
     if uploaded_db_files:
@@ -681,9 +686,17 @@ elif menu == "접수 완료":
             uploaded_file_list.append(file_path)
 
     # 누락된 파일 및 사유
-    c.execute("SELECT file_name, reason FROM missing_file_reasons WHERE submission_id = ?", (submission_id,))
+    c.execute(
+        "SELECT file_name, reason FROM missing_file_reasons WHERE submission_id = ?",
+        (sub_id,)
+    )
     missing_db_files = c.fetchall()
     conn.close()
+    
+    if missing_db_files:
+        st.markdown("#### 누락된 파일 및 사유")
+        for file_name, reason in missing_db_files:
+            st.info(f"📝 {file_name}: {reason}")
 
     if missing_db_files:
         st.markdown("#### 누락된 파일 및 사유")
