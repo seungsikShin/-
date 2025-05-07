@@ -529,7 +529,6 @@ menu = st.sidebar.radio(
 
 # 업로드된 파일 및 사유를 관리할 딕셔너리
 uploaded_files = {}
-missing_files = []
 reasons = {}
 
 # 파일 업로드 페이지 - menu 변수가 정의된 후에 사용
@@ -623,7 +622,6 @@ if menu == "파일 업로드":
                     st.error(message)
                     uploaded_files[file] = None
             else:
-                missing_files.append(file)
                 reasons[file] = st.text_input(
                     f"{file} 업로드하지 않은 이유", 
                     key=f"reason_{file}",
