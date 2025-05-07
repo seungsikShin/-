@@ -640,6 +640,12 @@ if menu == "파일 업로드":
         if incomplete_files:
             st.warning("다음 파일에 대해 업로드 또는 사유 입력이 필요합니다:\n\n- " + "\n- ".join(incomplete_files))
         else:
+            st.session_state["department"] = department
+            st.session_state["manager"] = manager
+            st.session_state["phone"] = phone
+            st.session_state["contract_name"] = contract_name
+            st.session_state["contract_date"] = contract_date
+            st.session_state["contract_amount_formatted"] = contract_amount_formatted
             st.experimental_set_query_params(menu="접수 완료")
             st.rerun()
 
