@@ -477,7 +477,7 @@ def send_email(subject, body, to_email, attachments=None) -> Tuple[bool, str]:
 init_db()
 # ✅ session_state 초기화
 if "menu" not in st.session_state:
-    st.session_state["menu"] = "파일 업로드
+    st.session_state["menu"] = "파일 업로드"
 # Streamlit UI 구성 - 사용자 경험 개선
 st.set_page_config(
     page_title="일상감사 접수 시스템",
