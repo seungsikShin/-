@@ -493,7 +493,7 @@ st.set_page_config(
 
 # 쿼리 파라미터에서 메뉴 초기값 가져오기
 query_params = st.query_params
-default_menu = query_params.get("menu", ["파일 업로드"])[0]
+default_menu = query_params.get("menu", "파일 업로드")
 if default_menu not in menu_options:
     default_menu = "파일 업로드"
 
@@ -645,8 +645,10 @@ if menu == "파일 업로드":
             st.session_state["contract_name"] = contract_name
             st.session_state["contract_date"] = contract_date
             st.session_state["contract_amount_formatted"] = contract_amount_formatted
-            st.experimental_set_query_params(menu="접수 완료")
+            
+            st.query_params["menu"] = "접수 완료"
             st.rerun()
+
 
       
 # 접수 완료 페이지
