@@ -501,14 +501,6 @@ if "menu" not in st.session_state:
 # 메뉴 정의
 menu_options = ["파일 업로드", "접수 완료"]
 
-# UI 구성
-st.set_page_config(
-    page_title="일상감사 접수 시스템",
-    page_icon="📋",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
 # 쿼리 파라미터에서 메뉴 초기값 가져오기
 default_menu = st.query_params.get("menu", "파일 업로드")
 if isinstance(default_menu, list):
