@@ -1,28 +1,29 @@
 import streamlit as st
-# ─── 이 줄이 가장 먼저 와야 합니다 ───
+
+# ───────────────────────────────────
+# 이 줄이 절대로 첫 번째 Streamlit 호출이어야 합니다!
 st.set_page_config(
     page_title="일상감사 접수 시스템",
     page_icon="📋",
     layout="wide"
 )
+# ───────────────────────────────────
 
+# 이제부터 import 나 세션 초기화, 메뉴 등 어떤 st.* 호출도 안전합니다
 import os
 import smtplib
 from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
-import datetime, hashlib           # datetime과 hashlib을 함께 import
-import requests
-import json
-from dotenv import load_dotenv
-import sqlite3
+# ... 그 외 모든 import …
 
-# ─── 세션 및 메뉴 초기화 ───
+import datetime, hashlib
+
+# 세션 초기화
 today = datetime.datetime.now().strftime("%Y%m%d")
 if "submission_id" not in st.session_state:
     st.session_state["submission_id"] = f"AUDIT-{today}-{hashlib.md5(today.encode()).hexdigest()[:6]}"
 submission_id = st.session_state["submission_id"]
 
+# 메뉴 초기화
 if "menu" not in st.session_state:
     st.session_state["menu"] = "파일 업로드"
 menu = st.sidebar.radio(
@@ -31,7 +32,6 @@ menu = st.sidebar.radio(
     index=0,
     key="menu"
 )
-
 import logging
 import mimetypes
 import re
