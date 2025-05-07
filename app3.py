@@ -623,47 +623,54 @@ if menu == "파일 업로드":
 # 접수 완료 페이지
 elif menu == "접수 완료":
     st.title("✅ 일상감사 접수 완료")
-    
+
     # 접수 내용 요약
     st.markdown("### 접수 내용 요약")
-    
+
     # 업로드된 파일 목록
     uploaded_file_list = []
     conn = sqlite3.connect('audit_system.db')
     c = conn.cursor()
     c.execute("SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?", (submission_id,))
     uploaded_db_files = c.fetchall()
-    
+
     if uploaded_db_files:
         st.markdown("#### 업로드된 파일")
         for file_name, file_path in uploaded_db_files:
             st.success(f"✅ {file_name}")
             uploaded_file_list.append(file_path)
-    
+
     # 누락된 파일 및 사유
     c.execute("SELECT file_name, reason FROM missing_file_reasons WHERE submission_id = ?", (submission_id,))
     missing_db_files = c.fetchall()
-    
+    conn.close()
+
     if missing_db_files:
         st.markdown("#### 누락된 파일 및 사유")
         for file_name, reason in missing_db_files:
             st.info(f"📝 {file_name}: {reason}")
-    
+
+    # ✅ 여기에 current_missing_files 정의
+    current_missing_files = []
+    for file in required_files:
+        file_uploaded = any(file == f_name for f_name, _ in uploaded_db_files)
+        file_reason_given = any(file == f_name for f_name, _ in missing_db_files)
+        if not file_uploaded and not file_reason_given:
+            current_missing_files.append(file)
+
     # 이메일 발송 섹션
     st.markdown("### 이메일 발송")
-    
-    # 수신자 이메일 주소 입력 (기본값 사용 가능)
     recipient_email = st.text_input("수신자 이메일 주소", value=to_email)
-    
-    # 이메일 제목 및 추가 메시지
     email_subject = st.text_input("이메일 제목", value=f"일상감사 접수: {submission_id}")
     additional_message = st.text_area("추가 메시지", value="")
-   
-# 접수 완료 버튼
-if st.button('접수 완료 및 이메일 발송'):
-    # 누락된 파일이 있고 사유도 입력되지 않은 경우, 이메일 발송하지 않고 경고 메시지 출력
-    if current_missing_files:
-        st.warning(f"누락된 파일: {', '.join(current_missing_files)}. 업로드 또는 사유를 입력해 주세요.")
+
+    # ✅ 버튼도 여기 안에 있어야 함
+    if st.button('접수 완료 및 이메일 발송'):
+        if current_missing_files:
+            st.warning(f"누락된 파일: {', '.join(current_missing_files)}. 업로드 또는 사유를 입력해 주세요.")
+        else:
+            # 이메일 전송 등 나머지 로직 진행...
+            st.success("🎉 이메일 보내는 코드 실행!")
         
         # 업로드된 파일들을 ZIP으로 압축
         zip_file_path = None
