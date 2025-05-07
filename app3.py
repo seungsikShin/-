@@ -492,8 +492,8 @@ st.set_page_config(
 )
 
 # 쿼리 파라미터에서 메뉴 초기값 가져오기
-query_params = st.query_params
-default_menu = query_params.get("menu", "파일 업로드")
+query_params = st.experimental_get_query_params()
+default_menu = query_params.get("menu", ["파일 업로드"])[0]
 if default_menu not in menu_options:
     default_menu = "파일 업로드"
 
@@ -550,7 +550,8 @@ if menu == "파일 업로드":
     # 접수 ID 생성 - 부서명 포함
     if department:
         # 부서명의 첫 글자만 추출하여 ID에 포함
-        submission_id = f"AUDIT-{upload_date}-{department}"
+        safe_dept = re.sub(r'[^\w]', '', department)[:6]
+        submission_id = f"AUDIT-{upload_date}-{safe_dept}"
     
     # 접수 ID 표시
     st.info(f"접수 ID: {submission_id}")
@@ -652,7 +653,7 @@ if menu == "파일 업로드":
             st.session_state["contract_date"] = contract_date
             st.session_state["contract_amount_formatted"] = contract_amount_formatted
             
-            st.query_params["menu"] = "접수 완료"
+            st.experimental_set_query_params(menu="접수 완료")
             st.rerun()
 
 
