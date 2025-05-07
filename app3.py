@@ -565,12 +565,12 @@ if menu == "파일 업로드":
         )
     
     # 다음 단계에서 사용할 값 저장
-      st.session_state["department"] = department
-      st.session_state["manager"] = manager
-      st.session_state["phone"] = phone
-      st.session_state["contract_name"] = contract_name
-      st.session_state["contract_date"] = contract_date
-      st.session_state["contract_amount_formatted"] = contract_amount_formatted
+        st.session_state["department"] = department
+        st.session_state["manager"] = manager
+        st.session_state["phone"] = phone
+        st.session_state["contract_name"] = contract_name
+        st.session_state["contract_date"] = contract_date
+        st.session_state["contract_amount_formatted"] = contract_amount_formatted
 
 # ✅ 이건 무조건 표시되어야 하니까 if 바깥으로
     st.markdown("필요한 파일을 업로드하거나, 해당 파일이 없는 경우 사유를 입력해주세요.")
