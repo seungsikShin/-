@@ -493,6 +493,8 @@ st.set_page_config(
 
 # 쿼리 파라미터에서 메뉴 초기값 가져오기
 default_menu = st.query_params.get("menu", "파일 업로드")
+if isinstance(default_menu, list):
+    default_menu = default_menu[0]
 if default_menu not in menu_options:
     default_menu = "파일 업로드"
 
@@ -564,13 +566,6 @@ if menu == "파일 업로드":
             contract_name, contract_date, contract_amount_formatted
         )
     
-    # 다음 단계에서 사용할 값 저장
-        st.session_state["department"] = department
-        st.session_state["manager"] = manager
-        st.session_state["phone"] = phone
-        st.session_state["contract_name"] = contract_name
-        st.session_state["contract_date"] = contract_date
-        st.session_state["contract_amount_formatted"] = contract_amount_formatted
 
 # ✅ 이건 무조건 표시되어야 하니까 if 바깥으로
     st.markdown("필요한 파일을 업로드하거나, 해당 파일이 없는 경우 사유를 입력해주세요.")
