@@ -664,11 +664,10 @@ elif menu == "접수 완료":
     sub_id = st.session_state["submission_id"]
     conn = sqlite3.connect('audit_system.db')
     c = conn.cursor()
-    c.execute("""
-        SELECT department, manager, phone, contract_name, contract_date, contract_amount
-        FROM submissions
-        WHERE submission_id = ?
-    """, (sub_id,))
+    c.execute(
+    "SELECT department, manager, phone, contract_name, contract_date, contract_amount FROM submissions WHERE submission_id = ?",
+    (sub_id,)
+    )
     department, manager, phone, contract_name, contract_date, contract_amount = c.fetchone()
 
     # 접수 내용 요약
