@@ -31,16 +31,6 @@ if "submission_id" not in st.session_state:
     st.session_state["submission_id"] = f"AUDIT-{today}-{hashlib.md5(today.encode()).hexdigest()[:6]}"
 submission_id = st.session_state["submission_id"]
 
-menu = st.sidebar.radio(
-    "메뉴 선택",
-    ["파일 업로드", "접수 완료"],
-    index=0,
-    key="menu"
-)
-
-# … 이하 기존 로직 …
-
-
 # ✅ GPT 감사보고서 docx 생성 함수
 
 def generate_audit_report_with_gpt(submission_id, department, manager, phone, contract_name,
