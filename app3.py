@@ -1,19 +1,28 @@
 import streamlit as st
+# ─── 이 줄이 가장 먼저 와야 합니다 ───
+st.set_page_config(
+    page_title="일상감사 접수 시스템",
+    page_icon="📋",
+    layout="wide"
+)
+
 import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
-import datetime
+import datetime, hashlib           # datetime과 hashlib을 함께 import
 import requests
 import json
 from dotenv import load_dotenv
 import sqlite3
-import hashlib
+
+# ─── 세션 및 메뉴 초기화 ───
 today = datetime.datetime.now().strftime("%Y%m%d")
 if "submission_id" not in st.session_state:
     st.session_state["submission_id"] = f"AUDIT-{today}-{hashlib.md5(today.encode()).hexdigest()[:6]}"
 submission_id = st.session_state["submission_id"]
+
 if "menu" not in st.session_state:
     st.session_state["menu"] = "파일 업로드"
 menu = st.sidebar.radio(
@@ -22,6 +31,7 @@ menu = st.sidebar.radio(
     index=0,
     key="menu"
 )
+
 import logging
 import mimetypes
 import re
@@ -29,6 +39,8 @@ import ssl
 from typing import List, Dict, Optional, Tuple, Any
 from docx import Document  # ✅ Word 파일 생성을 위한 추가
 import zipfile
+
+# ─── 여기서부터 기존 코드 이어서 작성 ───
 
 # 이하 생략된 부분은 기존 코드 그대로 유지...
 
