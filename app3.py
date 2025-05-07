@@ -492,7 +492,7 @@ st.set_page_config(
 )
 
 # 쿼리 파라미터에서 메뉴 초기값 가져오기
-query_params = st.experimental_get_query_params()
+query_params = st.query_params
 default_menu = query_params.get("menu", ["파일 업로드"])[0]
 if default_menu not in menu_options:
     default_menu = "파일 업로드"
