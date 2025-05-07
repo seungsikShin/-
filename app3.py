@@ -550,8 +550,7 @@ if menu == "파일 업로드":
     # 접수 ID 생성 - 부서명 포함
     if department:
         # 부서명의 첫 글자만 추출하여 ID에 포함
-        dept_code = department[:3]
-        submission_id = f"AUDIT-{upload_date}-{dept_code}"
+        submission_id = f"AUDIT-{upload_date}-{department}"
     
     # 접수 ID 표시
     st.info(f"접수 ID: {submission_id}")
