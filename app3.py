@@ -646,7 +646,7 @@ if menu == "파일 업로드":
             st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete))
         else:
             # 페이지 전환
-            st.session_state["menu"] = "접수 완료"
+            st.query_params["menu"] = "접수 완료"
             st.rerun()
 
 
