@@ -729,22 +729,22 @@ if menu == "파일 업로드":
             f for f in required_files
             if uploaded_files.get(f) is None and not reasons.get(f)
         ]
-    if incomplete:
-        st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete))
-    else:
+        if incomplete:
+            st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete))
+        else:
         # 1) 이전 레코드 삭제
-        conn = sqlite3.connect('audit_system.db')
-        c = conn.cursor()
-        c.execute(
-            "DELETE FROM uploaded_files WHERE submission_id = ?", 
-            (submission_id,)
-        )
-        conn.commit()
-        conn.close()
+            conn = sqlite3.connect('audit_system.db')
+            c = conn.cursor()
+            c.execute(
+                "DELETE FROM uploaded_files WHERE submission_id = ?", 
+                (submission_id,)
+            )
+            conn.commit()
+            conn.close()
 
         # 2) 페이지 전환
-        st.query_params["menu"] = "접수 완료"
-        st.rerun()
+            st.query_params["menu"] = "접수 완료"
+            st.rerun()
 
 
 
