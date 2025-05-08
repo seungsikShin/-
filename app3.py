@@ -541,7 +541,7 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
             # 타임스탬프 갱신
             st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")     
             # 세션 상태 초기화 (쿠키 ID와 타임스탬프 제외)
-            keys_to_keep = ["cookie_session_id", "timestamp"]
+            keys_to_keep = ["cookie_session_id", "timestamp", "uploader_reset_token"]
             for key in list(st.session_state.keys()):
                 if key not in keys_to_keep:
                     del st.session_state[key]
