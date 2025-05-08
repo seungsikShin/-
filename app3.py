@@ -550,8 +550,7 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
             st.session_state["last_session_time"] = datetime.datetime.now()
             st.success("새 접수가 시작되었습니다.")
             st.rerun()
-
-     with col2:
+    with col2:
         if st.button("DB 초기화", key="btn_reset_db"):
             try:
                 os.remove('audit_system.db')
@@ -562,6 +561,7 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
                 st.rerun()
             except Exception as e:
                 st.error(f"오류: {e}")
+
 
 # 메뉴 선택 라디오 버튼 (쿼리 파라미터 기반 index 설정)
 menu = st.sidebar.radio(
