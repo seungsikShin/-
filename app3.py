@@ -488,9 +488,6 @@ def send_email(subject, body, to_email, attachments=None) -> Tuple[bool, str]:
 
 # 데이터베이스 초기화
 init_db()
-# ✅ session_state 초기화
-if "menu" not in st.session_state:
-    st.session_state["menu"] = "파일 업로드"
 
 # 메뉴 정의
 menu_options = ["파일 업로드", "접수 완료"]
