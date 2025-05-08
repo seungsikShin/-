@@ -540,7 +540,7 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
                 if key != "cookie_session_id":
     # 파일 업로더와 사유 입력 필드 초기화
                 if key.startswith('uploader_') or key.startswith('reason_'):
-                del st.session_state[key]
+                    del st.session_state[key]
     # 다른 세션 상태도 초기화
     else:
         del st.session_state[key]
