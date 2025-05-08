@@ -701,14 +701,15 @@ if menu == "파일 업로드":
             key=f"reason_{user_key}_{timestamp}_{file}",
             help="파일을 업로드하지 않는 경우 반드시 사유를 입력해주세요."
         )
-
-                if reasons[file]:
-                    # 데이터베이스에 누락 사유 저장
-                    save_missing_reason_to_db(submission_id, file, reasons[file])
-                    st.info("사유가 저장되었습니다.")
-                    uploaded_count += 1
         
-        st.markdown("---")
+        if reasons[file]:
+            # 데이터베이스에 누락 사유 저장
+            save_missing_reason_to_db(submission_id, file, reasons[file])
+            st.info("사유가 저장되었습니다.")
+            uploaded_count += 1
+
+    st.markdown("---")
+
         
         # 진행 상황 업데이트
         progress_bar.progress(uploaded_count / total_files)
