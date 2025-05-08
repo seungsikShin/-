@@ -538,7 +538,12 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
             # 세션 상태 초기화 (쿠키 ID 제외)
             for key in list(st.session_state.keys()):
                 if key != "cookie_session_id":
-                    del st.session_state[key]
+    # 파일 업로더와 사유 입력 필드 초기화
+                if key.startswith('uploader_') or key.startswith('reason_'):
+                del st.session_state[key]
+    # 다른 세션 상태도 초기화
+    else:
+        del st.session_state[key]
             # 새로운 submission_id 생성
             session_id = st.session_state["cookie_session_id"]
             st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
