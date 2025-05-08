@@ -728,7 +728,7 @@ if menu == "파일 업로드":
         incomplete = [
             f for f in required_files
             if uploaded_files.get(f) is None and not reasons.get(f)
-    ]
+        ]
     if incomplete:
         st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete))
     else:
