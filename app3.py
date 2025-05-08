@@ -663,48 +663,49 @@ if menu == "파일 업로드":
 
         with col2:
     # 사용자별 고유 키 생성
-    user_key = st.session_state["cookie_session_id"]
+            user_key = st.session_state["cookie_session_id"]
     
-    if uploaded_files[file]:
+            if uploaded_files[file]:
         # 파일 검증
-        is_valid, message = validate_file(uploaded_files[file])
+                is_valid, message = validate_file(uploaded_files[file])
         
-        if is_valid:
+                if is_valid:
             # 파일 저장
-            file_path = save_uploaded_file(uploaded_files[file], session_folder)
+                    file_path = save_uploaded_file(uploaded_files[file], session_folder)
 
-            if file_path:
+                    if file_path:
                 # 데이터베이스에 파일 정보 저장
-                file_type = os.path.splitext(uploaded_files[file].name)[1]
-                save_file_to_db(
-                    submission_id, 
-                    uploaded_files[file].name, 
-                    file_path, 
-                    file_type, 
-                    uploaded_files[file].size
-                )
-                st.success(f"✅ 업로드 완료")
-                uploaded_count += 1
+                        file_type = os.path.splitext(uploaded_files[file].name)[1]
+                        save_file_to_db(
+                            submission_id, 
+                            uploaded_files[file].name, 
+                            file_path, 
+                            file_type, 
+                            uploaded_files[file].size
+                        )
+                        st.success(f"✅ 업로드 완료")
+                        uploaded_count += 1
+            else:
+                st.error(message)
+                uploaded_files[file] = None
         else:
-            st.error(message)
-            uploaded_files[file] = None
-    else:
         # 타임스탬프 가져오기
-        if "timestamp" not in st.session_state:
-            st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        timestamp = st.session_state["timestamp"]
+            if "timestamp" not in st.session_state:
+                st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            timestamp = st.session_state["timestamp"]
         
-        reasons[file] = st.text_input(
-            f"{file} 업로드하지 않은 이유", 
-            key=f"reason_{user_key}_{timestamp}_{file}",
-            help="파일을 업로드하지 않는 경우 반드시 사유를 입력해주세요."
-        )
+            reasons[file] = st.text_input(
+                f"{file} 업로드하지 않은 이유", 
+                key=f"reason_{user_key}_{timestamp}_{file}",
+                help="파일을 업로드하지 않는 경우 반드시 사유를 입력해주세요."
+            )
         
-        if reasons[file]:
+            if reasons[file]:
             # 데이터베이스에 누락 사유 저장
-            save_missing_reason_to_db(submission_id, file, reasons[file])
-            st.info("사유가 저장되었습니다.")
-            uploaded_count += 1
+                save_missing_reason_to_db(submission_id, file, reasons[file])
+                st.info("사유가 저장되었습니다.")
+                uploaded_count += 1
+
 
     st.markdown("---")
 
