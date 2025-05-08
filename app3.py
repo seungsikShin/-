@@ -47,7 +47,6 @@ if "last_session_time" not in st.session_state:
     for key in list(st.session_state.keys()):
         if key.startswith('uploader_') or key.startswith('reason_'):
             del st.session_state[key]
-    # 현재 시간 기록
     st.session_state["last_session_time"] = datetime.datetime.now()
 # 세션 타임아웃 설정 (20분)
 session_timeout = datetime.timedelta(minutes=20)
@@ -59,8 +58,10 @@ if "last_session_time" in st.session_state:
     
     # 타임아웃 초과 시 세션 초기화
     if elapsed_time > session_timeout:
+        # cookie_session_id, uploader_reset_token, last_session_time 만 유지
+        keys_to_keep = ["cookie_session_id", "uploader_reset_token", "last_session_time"]
         for key in list(st.session_state.keys()):
-            if key != "cookie_session_id":  # 쿠키 세션 ID는 유지
+            if key not in keys_to_keep:
                 del st.session_state[key]
         # 새 세션 ID 생성
         session_id = st.session_state["cookie_session_id"]
@@ -153,8 +154,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger('audit_system')
 
-# 환경 변수 로드 (.env 파일에서 민감한 정보 불러오기)
-load_dotenv()
 
 # OpenAI API 정보 (하드코딩)
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -541,16 +540,17 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
             # 타임스탬프 갱신
             st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")     
             # 세션 상태 초기화 (쿠키 ID와 타임스탬프 제외)
-            keys_to_keep = ["cookie_session_id", "timestamp", "uploader_reset_token"]
+            keys_to_keep = ["cookie_session_id", "uploader_reset_token"]
             for key in list(st.session_state.keys()):
                 if key not in keys_to_keep:
                     del st.session_state[key]
+
             # 새로운 submission_id 생성
             session_id = st.session_state["cookie_session_id"]
             st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
             st.session_state["last_session_time"] = datetime.datetime.now()
             st.success("새 접수가 시작되었습니다.")
-            st.rerun()
+            st.experimental_rerun()
     with col2:
         if st.button("DB 및 파일 완전 초기화", key="btn_full_reset"):
             st.session_state["uploader_reset_token"] = str(uuid.uuid4())
@@ -560,7 +560,7 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
                 if os.path.exists(base_folder):
                     shutil.rmtree(base_folder)
                 st.success("DB 및 파일 시스템이 완전히 초기화되었습니다. 새로고침 해주세요!")
-                st.rerun()
+                st.experimental_rerun()
             except Exception as e:
                 st.error(f"오류: {e}")
 
