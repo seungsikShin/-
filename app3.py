@@ -530,23 +530,19 @@ st.sidebar.title("📋 일상감사 접수 시스템")
 st.sidebar.info(f"접수 ID: {submission_id}")
 st.sidebar.markdown("---")
 
-# 초기화 옵션
+import shutil
+
 with st.sidebar.expander("초기화 옵션", expanded=True):
     col1, col2 = st.columns(2)
     with col1:
         if st.button("새 접수 시작", key="btn_new_submission"):
-             # 타임스탬프 갱신
+            # 타임스탬프 갱신
             st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            
-            # 세션 상태 초기화 (쿠키 ID 제외)
+            # 세션 상태 초기화 (쿠키 ID와 타임스탬프 제외)
+            keys_to_keep = ["cookie_session_id", "timestamp"]
             for key in list(st.session_state.keys()):
-                if key != "cookie_session_id":
-                    # 파일 업로더와 사유 입력 필드 초기화
-                    if key.startswith('uploader_') or key.startswith('reason_'):
-                        del st.session_state[key]
-                    # 다른 세션 상태도 초기화
-                    else:
-                        del st.session_state[key]
+                if key not in keys_to_keep:
+                    del st.session_state[key]
             # 새로운 submission_id 생성
             session_id = st.session_state["cookie_session_id"]
             st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
@@ -554,16 +550,17 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
             st.success("새 접수가 시작되었습니다.")
             st.rerun()
     with col2:
-        if st.button("DB 초기화", key="btn_reset_db"):
+        if st.button("DB 및 파일 완전 초기화", key="btn_full_reset"):
             try:
-                os.remove('audit_system.db')
+                if os.path.exists('audit_system.db'):
+                    os.remove('audit_system.db')
                 if os.path.exists(base_folder):
-                    import shutil
                     shutil.rmtree(base_folder)
-                st.success("DB 초기화 완료")
+                st.success("DB 및 파일 시스템이 완전히 초기화되었습니다. 새로고침 해주세요!")
                 st.rerun()
             except Exception as e:
                 st.error(f"오류: {e}")
+
 
 
 # 메뉴 선택 라디오 버튼 (쿼리 파라미터 기반 index 설정)
