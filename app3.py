@@ -45,7 +45,11 @@ submission_id = st.session_state["submission_id"]
 if "last_session_time" not in st.session_state:
     # 새 세션 시작 - 파일 업로더 상태 초기화
     for key in list(st.session_state.keys()):
-        if key.startswith('uploader_') or key.startswith('reason_'):
+        # uploader_reset_token은 남기고, 그 외 uploader_* 만 삭제
+        if key.startswith("uploader_") and key != "uploader_reset_token":
+            del st.session_state[key]
+        # reason_ 접두사는 전부 삭제
+        if key.startswith("reason_"):
             del st.session_state[key]
     st.session_state["last_session_time"] = datetime.datetime.now()
 # 세션 타임아웃 설정 (20분)
