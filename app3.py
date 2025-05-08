@@ -40,6 +40,32 @@ if "submission_id" not in st.session_state:
     st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
 submission_id = st.session_state["submission_id"]
 
+# 여기에 추가할 코드
+if "last_session_time" not in st.session_state:
+    # 새 세션 시작 - 파일 업로더 상태 초기화
+    for key in list(st.session_state.keys()):
+        if key.startswith('uploader_') or key.startswith('reason_'):
+            del st.session_state[key]
+    # 현재 시간 기록
+    st.session_state["last_session_time"] = datetime.datetime.now()
+# 세션 타임아웃 설정 (20분)
+session_timeout = datetime.timedelta(minutes=20)
+
+# 현재 시간과 마지막 세션 시간 비교
+if "last_session_time" in st.session_state:
+    current_time = datetime.datetime.now()
+    elapsed_time = current_time - st.session_state["last_session_time"]
+    
+    # 타임아웃 초과 시 세션 초기화
+    if elapsed_time > session_timeout:
+        for key in list(st.session_state.keys()):
+            if key != "cookie_session_id":  # 쿠키 세션 ID는 유지
+                del st.session_state[key]
+        # 새 세션 ID 생성
+        session_id = st.session_state["cookie_session_id"]
+        st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
+        st.session_state["last_session_time"] = current_time
+
 # ✅ GPT 감사보고서 docx 생성 함수
 
 def generate_audit_report_with_gpt(submission_id, department, manager, phone, contract_name,
@@ -504,17 +530,32 @@ st.sidebar.title("📋 일상감사 접수 시스템")
 st.sidebar.info(f"접수 ID: {submission_id}")
 st.sidebar.markdown("---")
 
-# 데이터베이스 초기화 옵션 추가
-if st.sidebar.button("데이터베이스 초기화"):
-    try:
-        os.remove('audit_system.db')
-        if os.path.exists(base_folder):
-            import shutil
-            shutil.rmtree(base_folder)
-        st.sidebar.success("데이터베이스와 파일이 초기화되었습니다.")
-        st.rerun()
-    except Exception as e:
-        st.sidebar.error(f"초기화 중 오류 발생: {e}")
+# 초기화 옵션
+with st.sidebar.expander("초기화 옵션"):
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("새 접수 시작"):
+            # 세션 상태 초기화 (쿠키 ID 제외)
+            for key in list(st.session_state.keys()):
+                if key != "cookie_session_id":
+                    del st.session_state[key]
+            # 새로운 submission_id 생성
+            session_id = st.session_state["cookie_session_id"]
+            st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
+            st.session_state["last_session_time"] = datetime.datetime.now()
+            st.success("새 접수가 시작되었습니다.")
+            st.rerun()
+    with col2:
+        if st.button("DB 초기화"):
+            try:
+                os.remove('audit_system.db')
+                if os.path.exists(base_folder):
+                    import shutil
+                    shutil.rmtree(base_folder)
+                st.success("DB 초기화 완료")
+                st.rerun()
+            except Exception as e:
+                st.error(f"오류: {e}")
 
 # 메뉴 선택 라디오 버튼 (쿼리 파라미터 기반 index 설정)
 menu = st.sidebar.radio(
