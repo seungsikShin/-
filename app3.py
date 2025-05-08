@@ -688,17 +688,17 @@ if menu == "파일 업로드":
                 else:
                     st.error(message)
                     uploaded_files[file] = None
-        else:
+            else:
         # 타임스탬프 가져오기
-            if "timestamp" not in st.session_state:
-                st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            timestamp = st.session_state["timestamp"]
+                if "timestamp" not in st.session_state:
+                    st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                timestamp = st.session_state["timestamp"]
         
-            reasons[file] = st.text_input(
-                f"{file} 업로드하지 않은 이유", 
-                key=f"reason_{user_key}_{timestamp}_{file}",
-                help="파일을 업로드하지 않는 경우 반드시 사유를 입력해주세요."
-            )
+                reasons[file] = st.text_input(
+                    f"{file} 업로드하지 않은 이유", 
+                    key=f"reason_{user_key}_{timestamp}_{file}",
+                    help="파일을 업로드하지 않는 경우 반드시 사유를 입력해주세요."
+                )
         
             if reasons[file]:
             # 데이터베이스에 누락 사유 저장
