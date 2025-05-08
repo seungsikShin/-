@@ -650,8 +650,6 @@ if menu == "파일 업로드":
         with col1:
     # 사용자별 고유 키 생성
             user_key = st.session_state["cookie_session_id"]
-    
-    # 타임스탬프 생성 (선택사항)
             if "timestamp" not in st.session_state:
                 st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             timestamp = st.session_state["timestamp"]
