@@ -51,6 +51,7 @@ if "last_session_time" not in st.session_state:
         # reason_ 접두사는 전부 삭제
         if key.startswith("reason_"):
             del st.session_state[key]
+    # 최초 실행 시간 기록
     st.session_state["last_session_time"] = datetime.datetime.now()
 # 세션 타임아웃 설정 (20분)
 session_timeout = datetime.timedelta(minutes=20)
