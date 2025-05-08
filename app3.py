@@ -535,6 +535,9 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
     col1, col2 = st.columns(2)
     with col1:
         if st.button("새 접수 시작", key="btn_new_submission"):
+             # 타임스탬프 갱신
+            st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            
             # 세션 상태 초기화 (쿠키 ID 제외)
             for key in list(st.session_state.keys()):
                 if key != "cookie_session_id":
@@ -648,6 +651,7 @@ if menu == "파일 업로드":
         col1, col2 = st.columns([3, 1])
         
         with col1:
+            user_key = st.session_state["cookie_session_id"]
             uploaded_files[file] = st.file_uploader(
                 f"📄 {file} 업로드", 
                 type=None,  # None으로 설정하여 모든 파일 타입 허용
@@ -681,7 +685,7 @@ if menu == "파일 업로드":
             else:
                 reasons[file] = st.text_input(
                     f"{file} 업로드하지 않은 이유", 
-                    key=f"reason_{file}",
+                    key=f"reason_{user_key}_{file}",
                     help="파일을 업로드하지 않는 경우 반드시 사유를 입력해주세요."
                 )
                 if reasons[file]:
