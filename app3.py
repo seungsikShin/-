@@ -198,7 +198,8 @@ def init_db():
         return False
 
 # 파일을 저장할 폴더 경로
-base_folder = "uploaded_files"
+import tempfile
+base_folder = os.path.join(tempfile.gettempdir(), "uploaded_files")
 if not os.path.exists(base_folder):
     os.makedirs(base_folder)
 
@@ -505,6 +506,18 @@ if default_menu not in menu_options:
 st.sidebar.title("📋 일상감사 접수 시스템")
 st.sidebar.info(f"접수 ID: {submission_id}")
 st.sidebar.markdown("---")
+
+# 데이터베이스 초기화 옵션 추가
+if st.sidebar.button("데이터베이스 초기화"):
+    try:
+        os.remove('audit_system.db')
+        if os.path.exists(base_folder):
+            import shutil
+            shutil.rmtree(base_folder)
+        st.sidebar.success("데이터베이스와 파일이 초기화되었습니다.")
+        st.rerun()
+    except Exception as e:
+        st.sidebar.error(f"초기화 중 오류 발생: {e}")
 
 # 메뉴 선택 라디오 버튼 (쿼리 파라미터 기반 index 설정)
 menu = st.sidebar.radio(
