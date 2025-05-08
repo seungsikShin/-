@@ -554,7 +554,7 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
             st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
             st.session_state["last_session_time"] = datetime.datetime.now()
             st.success("새 접수가 시작되었습니다.")
-            st.experimental_rerun()
+            st.rerun()
     with col2:
         if st.button("DB 및 파일 완전 초기화", key="btn_full_reset"):
             st.session_state["uploader_reset_token"] = str(uuid.uuid4())
@@ -564,7 +564,7 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
                 if os.path.exists(base_folder):
                     shutil.rmtree(base_folder)
                 st.success("DB 및 파일 시스템이 완전히 초기화되었습니다. 새로고침 해주세요!")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"오류: {e}")
 
