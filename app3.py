@@ -728,13 +728,24 @@ if menu == "파일 업로드":
         incomplete = [
             f for f in required_files
             if uploaded_files.get(f) is None and not reasons.get(f)
-        ]
-        if incomplete:
-            st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete))
-        else:
-            # 페이지 전환
-            st.query_params["menu"] = "접수 완료"
-            st.rerun()
+    ]
+    if incomplete:
+        st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete))
+    else:
+        # 1) 이전 레코드 삭제
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
+        c.execute(
+            "DELETE FROM uploaded_files WHERE submission_id = ?", 
+            (submission_id,)
+        )
+        conn.commit()
+        conn.close()
+
+        # 2) 페이지 전환
+        st.query_params["menu"] = "접수 완료"
+        st.rerun()
+
 
 
 
@@ -784,11 +795,6 @@ elif menu == "접수 완료":
     missing_db_files = c.fetchall()
     conn.close()
     
-    if missing_db_files:
-        st.markdown("#### 누락된 파일 및 사유")
-        for file_name, reason in missing_db_files:
-            st.info(f"📝 {file_name}: {reason}")
-
     if missing_db_files:
         st.markdown("#### 누락된 파일 및 사유")
         for file_name, reason in missing_db_files:
