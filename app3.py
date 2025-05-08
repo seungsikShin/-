@@ -537,9 +537,7 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
         if st.button("새 접수 시작", key="btn_new_submission"):
             # 세션 상태 초기화 (쿠키 ID 제외)
             for key in list(st.session_state.keys()):
-                if key != "cookie_session_id":
-    # 파일 업로더와 사유 입력 필드 초기화
-                if key.startswith('uploader_') or key.startswith('reason_'):
+                if key != "cookie_session_id" and (key.startswith('uploader_') or key.startswith('reason_')):
                     del st.session_state[key]
     # 다른 세션 상태도 초기화
     else:
