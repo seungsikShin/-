@@ -29,7 +29,8 @@ import zipfile
 today = datetime.datetime.now().strftime("%Y%m%d")
 # 세션 쿠키 관리 추가
 import uuid
-
+if "uploader_reset_token" not in st.session_state:
+    st.session_state["uploader_reset_token"] = str(uuid.uuid4())
 # 앱 시작 시 새로운 세션 ID 생성
 if "cookie_session_id" not in st.session_state:
     st.session_state["cookie_session_id"] = str(uuid.uuid4())
@@ -536,8 +537,9 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
     col1, col2 = st.columns(2)
     with col1:
         if st.button("새 접수 시작", key="btn_new_submission"):
+            st.session_state["uploader_reset_token"] = str(uuid.uuid4())
             # 타임스탬프 갱신
-            st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")     
             # 세션 상태 초기화 (쿠키 ID와 타임스탬프 제외)
             keys_to_keep = ["cookie_session_id", "timestamp"]
             for key in list(st.session_state.keys()):
@@ -551,6 +553,7 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
             st.rerun()
     with col2:
         if st.button("DB 및 파일 완전 초기화", key="btn_full_reset"):
+            st.session_state["uploader_reset_token"] = str(uuid.uuid4())
             try:
                 if os.path.exists('audit_system.db'):
                     os.remove('audit_system.db')
@@ -658,7 +661,7 @@ if menu == "파일 업로드":
             uploaded_files[file] = st.file_uploader(
                 f"📄 {file} 업로드", 
                 type=None,
-                key=f"uploader_{user_key}_{file}"
+                key=f"uploader_{st.session_state['uploader_reset_token']}_{file}"
             )
 
         with col2:
