@@ -331,17 +331,24 @@ def save_file_to_db(submission_id, file_name, file_path, file_type, file_size) -
 # 데이터베이스에 누락 파일 사유 저장
 def save_missing_reason_to_db(submission_id, file_name, reason) -> bool:
     """
-    누락된 파일의 사유를 데이터베이스에 저장합니다.
-    
-    Returns:
-        성공 여부
+    누락된 파일 사유를 중복 없이 DB에 저장합니다.
     """
     try:
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
+        # 이미 같은 레코드가 있으면 삽입 안 함
+        c.execute(
+            "SELECT 1 FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?",
+            (submission_id, file_name)
+        )
+        if c.fetchone():
+            conn.close()
+            return True
+
+        # 신규 레코드만 삽입
         c.execute('''
-        INSERT INTO missing_file_reasons (submission_id, file_name, reason)
-        VALUES (?, ?, ?)
+            INSERT INTO missing_file_reasons (submission_id, file_name, reason)
+            VALUES (?, ?, ?)
         ''', (submission_id, file_name, reason))
         conn.commit()
         conn.close()
@@ -735,10 +742,8 @@ if menu == "파일 업로드":
         # 1) 이전 레코드 삭제
             conn = sqlite3.connect('audit_system.db')
             c = conn.cursor()
-            c.execute(
-                "DELETE FROM uploaded_files WHERE submission_id = ?", 
-                (submission_id,)
-            )
+            c.execute("DELETE FROM uploaded_files WHERE submission_id = ?", (submission_id,))
+            c.execute("DELETE FROM missing_file_reasons WHERE submission_id = ?", (submission_id,))
             conn.commit()
             conn.close()
 
