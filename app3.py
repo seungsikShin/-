@@ -711,7 +711,7 @@ if menu == "파일 업로드":
 
         
         # 진행 상황 업데이트
-        progress_bar.progress(uploaded_count / total_files)
+    progress_bar.progress(uploaded_count / total_files)
     
     progress_container.info(f"진행 상황: {uploaded_count}/{total_files} 완료")
     
