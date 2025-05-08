@@ -531,10 +531,10 @@ st.sidebar.info(f"접수 ID: {submission_id}")
 st.sidebar.markdown("---")
 
 # 초기화 옵션
-with st.sidebar.expander("초기화 옵션"):
+with st.sidebar.expander("초기화 옵션", expanded=True):
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("새 접수 시작"):
+        if st.button("새 접수 시작", key="btn_new_submission"):
             # 세션 상태 초기화 (쿠키 ID 제외)
             for key in list(st.session_state.keys()):
                 if key != "cookie_session_id":
@@ -545,8 +545,8 @@ with st.sidebar.expander("초기화 옵션"):
             st.session_state["last_session_time"] = datetime.datetime.now()
             st.success("새 접수가 시작되었습니다.")
             st.rerun()
-    with col2:
-        if st.button("DB 초기화"):
+     with col2:
+        if st.button("DB 초기화", key="btn_reset_db"):
             try:
                 os.remove('audit_system.db')
                 if os.path.exists(base_folder):
