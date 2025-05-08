@@ -707,11 +707,11 @@ if menu == "파일 업로드":
                     help="파일을 업로드하지 않는 경우 반드시 사유를 입력해주세요."
                 )
         
-            if reasons[file]:
-            # 데이터베이스에 누락 사유 저장
+            if reasons.get(file):
                 save_missing_reason_to_db(submission_id, file, reasons[file])
                 st.info("사유가 저장되었습니다.")
                 uploaded_count += 1
+
 
 
     st.markdown("---")
