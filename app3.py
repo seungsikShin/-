@@ -648,13 +648,21 @@ if menu == "파일 업로드":
         col1, col2 = st.columns([3, 1])
         
         with col1:
-    # 타임스탬프를 키에 추가
-            timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            uploaded_files[file] = st.file_uploader(
-                f"📄 {file} 업로드", 
-                type=None,  # None으로 설정하여 모든 파일 타입 허용
-                key=f"uploader_{timestamp}_{file}"
-            )
+    # 사용자별 고유 키 생성
+    user_key = st.session_state["cookie_session_id"]
+    
+    # 타임스탬프 생성 (선택사항)
+    if "timestamp" not in st.session_state:
+        st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    timestamp = st.session_state["timestamp"]
+    
+    # 파일 업로더에 사용자별 고유 키 사용
+    uploaded_files[file] = st.file_uploader(
+        f"📄 {file} 업로드", 
+        type=None,  # None으로 설정하여 모든 파일 타입 허용
+        key=f"uploader_{user_key}_{timestamp}_{file}"
+    )
+
 
         
         with col2:
