@@ -648,12 +648,14 @@ if menu == "파일 업로드":
         col1, col2 = st.columns([3, 1])
         
         with col1:
-            user_key = st.session_state["cookie_session_id"]
+    # 타임스탬프를 키에 추가
+            timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             uploaded_files[file] = st.file_uploader(
                 f"📄 {file} 업로드", 
                 type=None,  # None으로 설정하여 모든 파일 타입 허용
-                key=f"uploader_{file}"
+                key=f"uploader_{timestamp}_{file}"
             )
+
         
         with col2:
             if uploaded_files[file]:
