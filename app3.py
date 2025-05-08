@@ -685,9 +685,9 @@ if menu == "파일 업로드":
                         )
                         st.success(f"✅ 업로드 완료")
                         uploaded_count += 1
-            else:
-                st.error(message)
-                uploaded_files[file] = None
+                else:
+                    st.error(message)
+                    uploaded_files[file] = None
         else:
         # 타임스탬프 가져오기
             if "timestamp" not in st.session_state:
