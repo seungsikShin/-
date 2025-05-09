@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 # 이제부터 다른 import
 import os
+import gc  # gc 모듈 추가
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -72,6 +73,14 @@ if "last_session_time" in st.session_state:
         session_id = st.session_state["cookie_session_id"]
         st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
         st.session_state["last_session_time"] = current_time
+        
+        # 임시 파일 정리 로직 추가
+        if os.path.exists(session_folder):
+            try:
+                shutil.rmtree(session_folder)
+                logger.info(f"세션 타임아웃으로 임시 파일 정리: {session_folder}")
+            except Exception as e:
+                logger.error(f"임시 파일 정리 오류: {str(e)}")
 
 # ✅ GPT 감사보고서 docx 생성 함수
 
@@ -283,8 +292,8 @@ def save_uploaded_file(uploaded_file, folder_path) -> Optional[str]:
     try:
         if uploaded_file is not None:
             # 파일명 보안 처리 (특수문자 제거)
-            safe_filename = re.sub(r'[^\w\s.-]', '', uploaded_file.name)
-            safe_filename = safe_filename.replace(' ', '_')
+            safe_filename = re.sub(r"[^\w\s.-]", "", uploaded_file.name)
+            safe_filename = safe_filename.replace(" ", "_")
             
             # 세션 폴더에 저장하도록 변경
             file_path = os.path.join(session_folder, safe_filename)
@@ -293,10 +302,14 @@ def save_uploaded_file(uploaded_file, folder_path) -> Optional[str]:
                 name, ext = os.path.splitext(safe_filename)
                 file_path = os.path.join(session_folder, f"{name}_{counter}{ext}")
                 counter += 1
-
-            # 파일 저장
+            
+            # 청크 단위로 파일 저장하여 메모리 효율성 개선
+            CHUNK_SIZE = 1024 * 1024  # 1MB 단위로 처리
             with open(file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
+                buffer = uploaded_file.read(CHUNK_SIZE)
+                while len(buffer) > 0:
+                    f.write(buffer)
+                    buffer = uploaded_file.read(CHUNK_SIZE)
             
             logger.info(f"파일 저장 성공: {file_path}")
             return file_path
@@ -576,6 +589,15 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
             except Exception as e:
                 st.error(f"오류: {e}")
 
+    # 새로운 버튼 추가
+    if st.button("파일 업로더 캐시 초기화", key="btn_clear_uploader"):
+        st.cache_data.clear()
+        # 파일 업로더 관련 세션 상태 변수 초기화
+        for key in list(st.session_state.keys()):
+            if key.startswith("uploader_") and key != "uploader_reset_token":
+                del st.session_state[key]
+        st.success("파일 업로더 캐시가 초기화되었습니다.")
+        st.rerun()
 
 
 # 메뉴 선택 라디오 버튼 (쿼리 파라미터 기반 index 설정)
@@ -700,6 +722,12 @@ if menu == "파일 업로드":
                         )
                         st.success(f"✅ 업로드 완료")
                         uploaded_count += 1
+                        
+                        # 메모리 해제를 위한 코드 추가
+                        file_content = uploaded_files[file]
+                        uploaded_files[file] = None
+                        del file_content
+                        gc.collect()  # 가비지 컬렉션 강제 실행
                 else:
                     st.error(message)
                     uploaded_files[file] = None
@@ -939,6 +967,20 @@ elif menu == "접수 완료":
                     file_name=f"접수확인서_{submission_id}.txt",
                     mime="text/plain"
                 )
+                
+                # 이메일 발송 후 메모리 정리
+                for attachment in email_attachments:
+                    if os.path.exists(attachment):
+                        try:
+                            # ZIP 파일은 남기고 나머지는 삭제 (선택적)
+                            if not attachment.endswith('.zip'):
+                                os.remove(attachment)
+                        except Exception as e:
+                            logger.error(f"첨부파일 정리 오류: {str(e)}")
+                
+                # 캐시 데이터 초기화
+                st.cache_data.clear()
+                gc.collect()
             else:
                 st.error(f"이메일 발송 중 오류가 발생했습니다: {message}")
 
