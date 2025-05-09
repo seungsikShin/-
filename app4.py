@@ -836,3 +836,154 @@ elif menu == "접수 완료":
         c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
                 (sub_id, req_file))
         reason_count = c.fetchone()[0]
+# 이메일 발송 섹션
+    st.markdown("### 이메일 발송")
+    recipient_email = st.text_input("수신자 이메일 주소", value=to_email)
+    email_subject = st.text_input("이메일 제목", value=f"일상감사 접수: {submission_id}")
+    additional_message = st.text_area("추가 메시지", value="")
+
+    # ✅ 버튼도 여기 안에 있어야 함
+    if st.button('접수 완료 및 이메일 발송'):
+        if current_missing_files:
+            st.warning(f"누락된 파일: {', '.join(current_missing_files)}. 업로드 또는 사유를 입력해 주세요.")
+        else:
+            # 업로드된 파일들을 ZIP으로 압축
+            zip_file_path = None
+            if uploaded_file_list:
+                zip_folder = os.path.join(base_folder, "zips")
+                if not os.path.exists(zip_folder):
+                    os.makedirs(zip_folder)
+                
+                zip_file_path = os.path.join(zip_folder, f"일상감사_파일_{submission_id}.zip")
+                
+                with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for file_path in uploaded_file_list:
+                        if os.path.exists(file_path):
+                            zipf.write(file_path, os.path.basename(file_path))
+                
+                # ZIP 파일 다운로드 버튼 제공
+                with open(zip_file_path, "rb") as f:
+                    zip_data = f.read()
+                    st.download_button(
+                        label="모든 파일 다운로드 (ZIP)",
+                        data=zip_data,
+                        file_name=f"일상감사_파일_{submission_id}.zip",
+                        mime="application/zip"
+                    )
+            
+            # 이메일 첨부 파일 목록 준비
+            email_attachments = []
+            
+            # ZIP 파일이 있으면 첨부
+            if zip_file_path and os.path.exists(zip_file_path):
+                email_attachments.append(zip_file_path)
+            else:
+                # ZIP 파일이 없으면 개별 파일 첨부
+                email_attachments.extend(uploaded_file_list)
+            
+            # 이메일 본문 작성
+            body = f"일상감사 접수 ID: {submission_id}\n"
+            body += f"접수일자: {upload_date}\n\n"
+            
+            if additional_message:
+                body += f"추가 메시지:\n{additional_message}\n\n"
+            
+            # 업로드된 파일 목록 추가
+            body += "업로드된 파일 목록:\n"
+            for file_name, _ in uploaded_db_files:
+                body += f"- {file_name}\n"
+            
+            # 누락된 파일 및 사유 추가
+            if missing_db_files:
+                body += "\n누락된 파일 및 사유:\n"
+                for file_name, reason in missing_db_files:
+                    body += f"- {file_name} (사유: {reason})\n"
+            
+            # 첨부 파일 안내 추가
+            if zip_file_path:
+                body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
+            # ✅ [여기] GPT 보고서 생성 및 첨부 추가
+            report_path = generate_audit_report_with_gpt(
+                submission_id=submission_id,
+                department=st.session_state.get("department", ""),
+                manager=st.session_state.get("manager", ""),
+                phone=st.session_state.get("phone", ""),
+                contract_name=st.session_state.get("contract_name", ""),
+                contract_date=st.session_state.get("contract_date", ""),
+                contract_amount=st.session_state.get("contract_amount_formatted", ""),
+                uploaded_files=[f for f, _ in uploaded_db_files],
+                missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
+            )
+
+            if report_path and os.path.exists(report_path):
+                email_attachments.append(report_path)
+                body += "* GPT 기반 감사보고서 초안이 첨부되어 있습니다.\n"
+            # 이메일 발송
+            with st.spinner("이메일을 발송 중입니다..."):
+                success, message = send_email(email_subject, body, recipient_email, email_attachments)
+                
+                if success:
+                    # 데이터베이스에 접수 상태 업데이트
+                    update_submission_status(submission_id, "접수완료", 1)
+                    st.success("일상감사 접수가 완료되었으며, 이메일 알림이 발송되었습니다!")
+                    
+                    # 접수 완료 확인서 표시
+                    st.markdown("### 접수 완료 확인서")
+                    st.markdown(f"""
+                    **접수 ID**: {submission_id}  
+                    **접수일자**: {upload_date}  
+                    **처리상태**: 접수완료  
+                    **이메일 발송**: 완료 ({recipient_email})
+                    """)
+                    
+                    # 다운로드 버튼 제공
+                    receipt_text = f"""
+                    일상감사 접수 확인서
+                    
+                    접수 ID: {submission_id}
+                    접수일자: {upload_date}
+                    처리상태: 접수완료
+                    이메일 발송: 완료 ({recipient_email})
+                    
+                    업로드된 파일 목록:
+                    """
+                    for file_name, _ in uploaded_db_files:
+                        receipt_text += f"- {file_name}\n"
+                    
+                    if missing_db_files:
+                        receipt_text += "\n누락된 파일 및 사유:\n"
+                        for file_name, reason in missing_db_files:
+                            receipt_text += f"- {file_name} (사유: {reason})\n"
+                    
+                    st.download_button(
+                        label="접수 확인서 다운로드",
+                        data=receipt_text,
+                        file_name=f"접수확인서_{submission_id}.txt",
+                        mime="text/plain"
+                    )
+                    
+                    # 이메일 발송 후 메모리 정리
+                    for attachment in email_attachments:
+                        if os.path.exists(attachment):
+                            try:
+                                # ZIP 파일은 남기고 나머지는 삭제 (선택적)
+                                if not attachment.endswith('.zip'):
+                                    os.remove(attachment)
+                            except Exception as e:
+                                logger.error(f"첨부파일 정리 오류: {str(e)}")
+                    
+                    # 캐시 데이터 초기화
+                    st.cache_data.clear()
+                    gc.collect()
+                else:
+                    st.error(f"이메일 발송 중 오류가 발생했습니다: {message}")
+
+
+# 페이지 하단 정보
+st.sidebar.markdown("---")
+st.sidebar.info("""
+© 2025 일상감사 접수 시스템
+문의:  
+    OKH. 감사팀
+    📞 02-2009-6512/ 신승식
+""")
