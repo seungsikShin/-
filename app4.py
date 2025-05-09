@@ -767,6 +767,7 @@ if menu == "파일 업로드":
                 incomplete_files.append(req_file)
         
         conn.close()
+        current_missing_files = incomplete_files
         
         if incomplete_files:
             st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete_files))
