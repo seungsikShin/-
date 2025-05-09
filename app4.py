@@ -828,15 +828,20 @@ elif menu == "접수 완료":
     # DB에서 누락 파일 확인 - 파일 유형으로 검색
     incomplete_files = []
     for req_file in required_files:
-        # 업로드 파일 확인 - 파일명에 파일 유형이 포함된 경우
+        # 업로드 파일 확인
         c.execute("SELECT COUNT(*) FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
-                (sub_id, f"%{req_file}%"))
+                  (sub_id, f"%{req_file}%"))
         file_count = c.fetchone()[0]
         
         # 사유 제공 확인
         c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
-                (sub_id, req_file))
+                  (sub_id, req_file))
         reason_count = c.fetchone()[0]
+        
+        if file_count == 0 and reason_count == 0:
+            incomplete_files.append(req_file)
+     current_missing_files = incomplete_files
+
 # 이메일 발송 섹션
     st.markdown("### 이메일 발송")
     recipient_email = st.text_input("수신자 이메일 주소", value=to_email)
