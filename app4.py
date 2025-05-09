@@ -837,7 +837,6 @@ elif menu == "접수 완료":
         c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
                   (sub_id, req_file))
         reason_count = c.fetchone()[0]
-        
         if file_count == 0 and reason_count == 0:
             incomplete_files.append(req_file)
      current_missing_files = incomplete_files
