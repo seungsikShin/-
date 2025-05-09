@@ -806,12 +806,17 @@ elif menu == "접수 완료":
             st.info(f"📝 {file_name}: {reason}")
 
     # ✅ 여기에 current_missing_files 정의
-    current_missing_files = []
-    for file in required_files:
-        file_uploaded = any(file == f_name for f_name, _ in uploaded_db_files)
-        file_reason_given = any(file == f_name for f_name, _ in missing_db_files)
-        if not file_uploaded and not file_reason_given:
-            current_missing_files.append(file)
+    def is_uploaded(file_label: str) -> bool:
+    # 파일명 또는 파일 설명의 일부가 포함되어 있는지 확인
+        return any(file_label in f_name for f_name, _ in uploaded_db_files)
+
+    def is_reason_provided(file_label: str) -> bool:
+        return any(file_label in f_name for f_name, _ in missing_db_files)
+
+    current_missing_files = [
+        file for file in required_files
+        if not is_uploaded(file) and not is_reason_provided(file)
+    ]
 
     # 이메일 발송 섹션
     st.markdown("### 이메일 발송")
