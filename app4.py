@@ -839,7 +839,7 @@ elif menu == "접수 완료":
         reason_count = c.fetchone()[0]
         if file_count == 0 and reason_count == 0:
             incomplete_files.append(req_file)
-     current_missing_files = incomplete_files
+    current_missing_files = incomplete_files
 
 # 이메일 발송 섹션
     st.markdown("### 이메일 발송")
