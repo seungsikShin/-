@@ -43,21 +43,6 @@ if "submission_id" not in st.session_state:
     st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
 submission_id = st.session_state["submission_id"]
 
-# 여기에 추가할 코드
-if "last_session_time" not in st.session_state:
-    # 새 세션 시작 - 파일 업로더 상태 초기화
-    for key in list(st.session_state.keys()):
-        # uploader_reset_token은 남기고, 그 외 uploader_* 만 삭제
-        if key.startswith("uploader_") and key != "uploader_reset_token":
-            del st.session_state[key]
-        # reason_ 접두사는 전부 삭제
-        if key.startswith("reason_"):
-            del st.session_state[key]
-    # 최초 실행 시간 기록
-    st.session_state["last_session_time"] = datetime.datetime.now()
-# 세션 타임아웃 설정 (20분)
-session_timeout = datetime.timedelta(minutes=20)
-
 # 로깅 설정
 logging.basicConfig(
     level=logging.INFO,
@@ -82,33 +67,47 @@ session_folder = os.path.join(today_folder, st.session_state["submission_id"])
 if not os.path.exists(session_folder):
     os.makedirs(session_folder)
 
-# 현재 시간과 마지막 세션 시간 비교
-if "last_session_time" in st.session_state:
-    current_time = datetime.datetime.now()
-    elapsed_time = current_time - st.session_state["last_session_time"]
-    
-    # 타임아웃 초과 시 세션 초기화
-    if elapsed_time > session_timeout:
-        # cookie_session_id, uploader_reset_token, last_session_time 만 유지
+# 세션 타임아웃 설정 (20분)
+session_timeout = datetime.timedelta(minutes=20)
+
+# 타임아웃 검사 및 세션 연장 로직
+current_time = datetime.datetime.now()
+
+if "last_session_time" not in st.session_state:
+    # 최초 실행 시 기록
+    st.session_state["last_session_time"] = current_time
+    # 새 세션 시작 - 파일 업로더 상태 초기화
+    for key in list(st.session_state.keys()):
+        # uploader_reset_token은 남기고, 그 외 uploader_* 만 삭제
+        if key.startswith("uploader_") and key != "uploader_reset_token":
+            del st.session_state[key]
+        # reason_ 접두사는 전부 삭제
+        if key.startswith("reason_"):
+            del st.session_state[key]
+else:
+    elapsed = current_time - st.session_state["last_session_time"]
+    if elapsed > session_timeout:
+        # 타임아웃 초과 시에만 세션 초기화
         keys_to_keep = ["cookie_session_id", "uploader_reset_token", "last_session_time"]
         for key in list(st.session_state.keys()):
             if key not in keys_to_keep:
                 del st.session_state[key]
-        # 새 세션 ID 생성
+        # 새로운 submission_id 및 시간 갱신
         session_id = st.session_state["cookie_session_id"]
         st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
         st.session_state["last_session_time"] = current_time
-        
-        # 임시 파일 정리 로직 추가
+        # 임시 파일 폴더 정리
         if os.path.exists(session_folder):
             try:
                 shutil.rmtree(session_folder)
                 logger.info(f"세션 타임아웃으로 임시 파일 정리: {session_folder}")
             except Exception as e:
-                logger.error(f"임시 파일 정리 오류: {str(e)}")
+                logger.error(f"임시 파일 정리 오류: {e}")
+        st.rerun()
+# 정상 흐름 시 마지막 상호작용 시간 갱신
+st.session_state["last_session_time"] = current_time
 
 # ✅ GPT 감사보고서 docx 생성 함수
-
 def generate_audit_report_with_gpt(submission_id, department, manager, phone, contract_name,
                                    contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
     try:
@@ -586,10 +585,6 @@ menu = st.sidebar.radio(
 )
 
 
-# 업로드된 파일 및 사유를 관리할 딕셔너리
-uploaded_files = {}
-reasons = {}
-
 # 파일 업로드 페이지 - menu 변수가 정의된 후에 사용
 if menu == "파일 업로드":
     st.title("📤 일상감사 파일 업로드")
@@ -646,8 +641,7 @@ if menu == "파일 업로드":
             contract_amount_formatted
         )
       
-
-# ✅ 이건 무조건 표시되어야 하니까 if 바깥으로
+    # 필요한 파일을 업로드하거나 사유 입력 안내
     st.markdown("필요한 파일을 업로드하거나, 해당 파일이 없는 경우 사유를 입력해주세요.")
     
     # 진행 상황 표시
@@ -661,69 +655,88 @@ if menu == "파일 업로드":
         st.markdown(f"### {idx+1}. {file}")
         col1, col2 = st.columns([3, 1])
         
+        # 파일 유형 별 DB에 업로드됐는지 확인
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
+        c.execute("SELECT file_name FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
+                (submission_id, f"%{file}%"))
+        is_file_uploaded = bool(c.fetchone())
+        
+        # 사유 입력됐는지 확인
+        c.execute("SELECT reason FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
+                (submission_id, file))
+        reason_record = c.fetchone()
+        conn.close()
+        
+        # 이미 업로드된 파일이면 메시지만 표시
+        if is_file_uploaded:
+            st.success(f"✅ {file} 업로드 완료됨")
+            uploaded_count += 1
+            continue
+        
+        # 이미 사유가 있는 경우 표시
+        if reason_record:
+            st.info(f"📝 {file}: {reason_record[0]}")
+            uploaded_count += 1
+            continue
+        
         with col1:
             # 사용자별 고유 키 생성
             user_key = st.session_state["cookie_session_id"]
             if "timestamp" not in st.session_state:
                 st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             timestamp = st.session_state["timestamp"]
-    
+            
             # 파일 업로더에 사용자별 고유 키 사용
-            uploaded_files[file] = st.file_uploader(
+            uploaded_file = st.file_uploader(
                 f"📄 {file} 업로드", 
                 type=None,
                 key=f"uploader_{st.session_state['uploader_reset_token']}_{file}"
             )
 
         with col2:
-            # 사용자별 고유 키 생성
-            user_key = st.session_state["cookie_session_id"]
-    
-            if uploaded_files[file]:
+            if uploaded_file:
                 # 파일 검증
-                is_valid, message = validate_file(uploaded_files[file])
+                is_valid, message = validate_file(uploaded_file)
         
                 if is_valid:
                     # 파일 저장
-                    file_path = save_uploaded_file(uploaded_files[file], session_folder)
+                    file_path = save_uploaded_file(uploaded_file, session_folder)
 
                     if file_path:
-                        # 데이터베이스에 파일 정보 저장
-                        file_type = os.path.splitext(uploaded_files[file].name)[1]
+                        # 파일 정보와 필수 파일 유형 정보도 함께 저장
+                        file_type = os.path.splitext(uploaded_file.name)[1]
                         save_file_to_db(
                             submission_id, 
-                            uploaded_files[file].name, 
+                            f"{file} - {uploaded_file.name}", # 파일 유형을 파일명에 포함
                             file_path, 
                             file_type, 
-                            uploaded_files[file].size
+                            uploaded_file.size
                         )
                         st.success(f"✅ 업로드 완료")
                         uploaded_count += 1
                         
                         # 메모리 해제를 위한 코드 추가
-                        file_content = uploaded_files[file]
-                        uploaded_files[file] = None
-                        del file_content
-                        gc.collect()  # 가비지 컬렉션 강제 실행
+                        del uploaded_file
+                        gc.collect()
+                        
+                        # 페이지 다시 로드하여 UI 갱신
+                        st.rerun()
                 else:
                     st.error(message)
-                    uploaded_files[file] = None
             else:
-                # 타임스탬프 가져오기
-                if "timestamp" not in st.session_state:
-                    st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-                timestamp = st.session_state["timestamp"]
-        
-                reasons[file] = st.text_input(
+                reason = st.text_input(
                     f"{file} 업로드하지 않은 이유", 
                     key=f"reason_{user_key}_{timestamp}_{file}",
                     help="파일을 업로드하지 않는 경우 반드시 사유를 입력해주세요."
                 )
-        
-                if reasons.get(file):
-                    save_missing_reason_to_db(submission_id, file, reasons[file])
-                    st.info("사유가 저장되었습니다.")
-                    uploaded_count += 1
+                
+                if reason:
+                    if save_missing_reason_to_db(submission_id, file, reason):
+                        st.info("사유가 저장되었습니다.")
+                        uploaded_count += 1
+                        # 사유 저장 후 페이지 리로드
+                        st.rerun()
 
     st.markdown("---")
 
@@ -731,35 +744,29 @@ if menu == "파일 업로드":
     progress_bar.progress(uploaded_count / total_files)
     progress_container.info(f"진행 상황: {uploaded_count}/{total_files} 완료")
     
-    # === 수정된 다음 단계 버튼 로직 ===
+    # 다음 단계로 버튼 - DB에서 확인하도록 수정
     if st.button("다음 단계: 접수 완료", key="next_to_complete"):
-        # 데이터베이스에서 직접 정보 가져오기
+        # DB에서 직접 파일 및 사유 정보 확인
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
         
-        # 업로드된 파일 목록 가져오기
-        c.execute("SELECT file_name FROM uploaded_files WHERE submission_id = ?", (submission_id,))
-        uploaded_files_db = c.fetchall()
-        uploaded_files_names = [name[0] for name in uploaded_files_db]
-        
-        # 누락 사유가 있는 파일 목록 가져오기
-        c.execute("SELECT file_name FROM missing_file_reasons WHERE submission_id = ?", (submission_id,))
-        missing_files_db = c.fetchall()
-        missing_files_names = [name[0] for name in missing_files_db]
-        conn.close()
-        
-        # 모든 필수 파일에 대해 업로드 또는 사유가 제공되었는지 확인
+        # 파일명에 파일 유형 포함여부 확인
         incomplete_files = []
         for req_file in required_files:
-            # 파일명이나 파일 설명에 요구 파일 이름이 포함되어 있는지 확인
-            is_uploaded = any(req_file in file_name for file_name in uploaded_files_names)
-            has_reason = any(req_file in file_name for file_name in missing_files_names)
+            # 업로드 파일 확인
+            c.execute("SELECT COUNT(*) FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
+                    (submission_id, f"%{req_file}%"))
+            file_count = c.fetchone()[0]
             
-            # 현재 세션에서 사유를 입력했지만 아직 DB에 없는 경우를 위한 체크
-            current_reason = reasons.get(req_file, "")
+            # 사유 제공 확인
+            c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
+                    (submission_id, req_file))
+            reason_count = c.fetchone()[0]
             
-            if not (is_uploaded or has_reason or current_reason):
+            if file_count == 0 and reason_count == 0:
                 incomplete_files.append(req_file)
+        
+        conn.close()
         
         if incomplete_files:
             st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete_files))
@@ -817,169 +824,15 @@ elif menu == "접수 완료":
         for file_name, reason in missing_db_files:
             st.info(f"📝 {file_name}: {reason}")
 
-    # === 수정된 current_missing_files 정의 ===
-    # DB에서 모든 정보를 가져와 누락된 파일 확인
-    c.execute("SELECT file_name FROM uploaded_files WHERE submission_id = ?", (sub_id,))
-    uploaded_files_names = [name[0] for name in c.fetchall()]
-
-    c.execute("SELECT file_name FROM missing_file_reasons WHERE submission_id = ?", (sub_id,))
-    missing_files_names = [name[0] for name in c.fetchall()]
-    conn.close()
-
-    current_missing_files = [
-        file for file in required_files
-        if not (any(file in name for name in uploaded_files_names) or 
-                any(file in name for name in missing_files_names))
-    ]
-
-    # 이메일 발송 섹션
-    st.markdown("### 이메일 발송")
-    recipient_email = st.text_input("수신자 이메일 주소", value=to_email)
-    email_subject = st.text_input("이메일 제목", value=f"일상감사 접수: {submission_id}")
-    additional_message = st.text_area("추가 메시지", value="")
-
-    # ✅ 버튼도 여기 안에 있어야 함
-    if st.button('접수 완료 및 이메일 발송'):
-        if current_missing_files:
-            st.warning(f"누락된 파일: {', '.join(current_missing_files)}. 업로드 또는 사유를 입력해 주세요.")
-        else:
-            # 업로드된 파일들을 ZIP으로 압축
-            zip_file_path = None
-            if uploaded_file_list:
-                zip_folder = os.path.join(base_folder, "zips")
-                if not os.path.exists(zip_folder):
-                    os.makedirs(zip_folder)
-                
-                zip_file_path = os.path.join(zip_folder, f"일상감사_파일_{submission_id}.zip")
-                
-                with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    for file_path in uploaded_file_list:
-                        if os.path.exists(file_path):
-                            zipf.write(file_path, os.path.basename(file_path))
-                
-                # ZIP 파일 다운로드 버튼 제공
-                with open(zip_file_path, "rb") as f:
-                    zip_data = f.read()
-                    st.download_button(
-                        label="모든 파일 다운로드 (ZIP)",
-                        data=zip_data,
-                        file_name=f"일상감사_파일_{submission_id}.zip",
-                        mime="application/zip"
-                    )
-            
-            # 이메일 첨부 파일 목록 준비
-            email_attachments = []
-            
-            # ZIP 파일이 있으면 첨부
-            if zip_file_path and os.path.exists(zip_file_path):
-                email_attachments.append(zip_file_path)
-            else:
-                # ZIP 파일이 없으면 개별 파일 첨부
-                email_attachments.extend(uploaded_file_list)
-            
-            # 이메일 본문 작성
-            body = f"일상감사 접수 ID: {submission_id}\n"
-            body += f"접수일자: {upload_date}\n\n"
-            
-            if additional_message:
-                body += f"추가 메시지:\n{additional_message}\n\n"
-            
-            # 업로드된 파일 목록 추가
-            body += "업로드된 파일 목록:\n"
-            for file_name, _ in uploaded_db_files:
-                body += f"- {file_name}\n"
-            
-            # 누락된 파일 및 사유 추가
-            if missing_db_files:
-                body += "\n누락된 파일 및 사유:\n"
-                for file_name, reason in missing_db_files:
-                    body += f"- {file_name} (사유: {reason})\n"
-            
-            # 첨부 파일 안내 추가
-            if zip_file_path:
-                body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
-            # ✅ [여기] GPT 보고서 생성 및 첨부 추가
-            report_path = generate_audit_report_with_gpt(
-                submission_id=submission_id,
-                department=st.session_state.get("department", ""),
-                manager=st.session_state.get("manager", ""),
-                phone=st.session_state.get("phone", ""),
-                contract_name=st.session_state.get("contract_name", ""),
-                contract_date=st.session_state.get("contract_date", ""),
-                contract_amount=st.session_state.get("contract_amount_formatted", ""),
-                uploaded_files=[f for f, _ in uploaded_db_files],
-                missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
-            )
-
-            if report_path and os.path.exists(report_path):
-                email_attachments.append(report_path)
-                body += "* GPT 기반 감사보고서 초안이 첨부되어 있습니다.\n"
-            # 이메일 발송
-            with st.spinner("이메일을 발송 중입니다..."):
-                success, message = send_email(email_subject, body, recipient_email, email_attachments)
-                
-                if success:
-                    # 데이터베이스에 접수 상태 업데이트
-                    update_submission_status(submission_id, "접수완료", 1)
-                    st.success("일상감사 접수가 완료되었으며, 이메일 알림이 발송되었습니다!")
-                    
-                    # 접수 완료 확인서 표시
-                    st.markdown("### 접수 완료 확인서")
-                    st.markdown(f"""
-                    **접수 ID**: {submission_id}  
-                    **접수일자**: {upload_date}  
-                    **처리상태**: 접수완료  
-                    **이메일 발송**: 완료 ({recipient_email})
-                    """)
-                    
-                    # 다운로드 버튼 제공
-                    receipt_text = f"""
-                    일상감사 접수 확인서
-                    
-                    접수 ID: {submission_id}
-                    접수일자: {upload_date}
-                    처리상태: 접수완료
-                    이메일 발송: 완료 ({recipient_email})
-                    
-                    업로드된 파일 목록:
-                    """
-                    for file_name, _ in uploaded_db_files:
-                        receipt_text += f"- {file_name}\n"
-                    
-                    if missing_db_files:
-                        receipt_text += "\n누락된 파일 및 사유:\n"
-                        for file_name, reason in missing_db_files:
-                            receipt_text += f"- {file_name} (사유: {reason})\n"
-                    
-                    st.download_button(
-                        label="접수 확인서 다운로드",
-                        data=receipt_text,
-                        file_name=f"접수확인서_{submission_id}.txt",
-                        mime="text/plain"
-                    )
-                    
-                    # 이메일 발송 후 메모리 정리
-                    for attachment in email_attachments:
-                        if os.path.exists(attachment):
-                            try:
-                                # ZIP 파일은 남기고 나머지는 삭제 (선택적)
-                                if not attachment.endswith('.zip'):
-                                    os.remove(attachment)
-                            except Exception as e:
-                                logger.error(f"첨부파일 정리 오류: {str(e)}")
-                    
-                    # 캐시 데이터 초기화
-                    st.cache_data.clear()
-                    gc.collect()
-                else:
-                    st.error(f"이메일 발송 중 오류가 발생했습니다: {message}")
-
-
-# 페이지 하단 정보
-st.sidebar.markdown("---")
-st.sidebar.info("""
-© 2025 일상감사 접수 시스템
-문의:  
-    OKH. 감사팀
-    📞 02-2009-6512/ 신승식
-""")
+    # DB에서 누락 파일 확인 - 파일 유형으로 검색
+    incomplete_files = []
+    for req_file in required_files:
+        # 업로드 파일 확인 - 파일명에 파일 유형이 포함된 경우
+        c.execute("SELECT COUNT(*) FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
+                (sub_id, f"%{req_file}%"))
+        file_count = c.fetchone()[0]
+        
+        # 사유 제공 확인
+        c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
+                (sub_id, req_file))
+        reason_count = c.fetchone()[0]
