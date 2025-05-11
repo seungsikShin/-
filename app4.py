@@ -7,6 +7,8 @@ st.set_page_config(
 )
 from dotenv import load_dotenv  
 load_dotenv()
+with open("system_prompt.txt", "r", encoding="utf-8") as f:
+    SYSTEM_PROMPT = f.read().strip()
 # 이제부터 다른 import
 import os
 import gc  # gc 모듈 추가
@@ -117,7 +119,7 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
         else:
             missing_items = "없음"
 
-        prompt = f"""
+        user_context = f"""
 당신은 일상감사 실무자의 업무를 보조하는 AI 감사 도우미입니다.
 다음은 감사 접수 정보입니다:
 
@@ -134,13 +136,14 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
 위 정보를 바탕으로 다음 항목을 포함한 일상감사 보고서 초안을 작성해 주세요:
 1. 감사 개요  
 2. 계약 요약  
-3. 자료 제출 현황  
+3. 계약 적정성 분석  
 4. 누락 자료 및 추가 요청 사항  
 5. 향후 검토 예정 사항  
 
 형식은 워드 스타일로 작성해 주세요.
         """.strip()
-
+        prompt = SYSTEM_PROMPT + "\n\n" + user_context
+        
         answer, success = get_clean_answer_from_gpts(prompt)
         if not success:
             return None
