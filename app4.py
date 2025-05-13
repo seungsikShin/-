@@ -407,7 +407,6 @@ def get_clean_answer_from_gpts(question: str) -> Tuple[str, bool]:
         import time
 
         assistant_id = "asst_oTip4nhZNJHinYxehJ7itwG9"
-        thread_id = "thread_fELywv3yHxSmzKhd31WumcgT"
 
         headers = {
             "Authorization": f"Bearer {openai_api_key}",
@@ -415,7 +414,14 @@ def get_clean_answer_from_gpts(question: str) -> Tuple[str, bool]:
             "Content-Type": "application/json",
             "OpenAI-Beta": "assistants=v2"
         }
-
+        # 1. 새 스레드 생성
+        thread_url = "https://api.openai.com/v1/threads"
+        thread_response = requests.post(thread_url, headers=headers)
+        if thread_response.status_code != 200:
+            return f"[스레드 생성 실패] {thread_response.text}", False
+        
+        thread_id = thread_response.json()["id"]
+        
         # 1. 메시지를 해당 thread에 추가
         message_url = f"https://api.openai.com/v1/threads/{thread_id}/messages"
         add_msg = {
