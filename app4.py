@@ -122,14 +122,14 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
         else:
             missing_list = "없음"
         
-        # 명확한 지시와 함께 데이터 제공
+        # 명확하고 상세한 지시사항 포함
         user_message = f"""
-감사 대상 계약 정보를 바탕으로 일상감사 보고서 초안을 작성해 주세요:
+다음 정보를 기반으로 상세하고 전문적인 일상감사 보고서를 작성해주세요:
 
-## 계약 정보
+## 계약 기본 정보
 - 접수 ID: {submission_id}
 - 접수 부서: {department}
-- 담당자: {manager} ({phone})
+- 담당자: {manager} (연락처: {phone})
 - 계약명: {contract_name}
 - 계약 체결일: {contract_date}
 - 계약금액: {contract_amount}
@@ -140,22 +140,46 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
 ## 누락된 자료 및 사유
 {missing_list}
 
-위 정보를 바탕으로 감사 전문가 수준의 보고서를 작성하세요. 
-보고서는 시스템 프롬프트에 명시된 구조와 품질 기준을 준수해야 합니다.
+## 보고서 작성 지침
+1. 표준 감사보고서 형식을 따르되, 각 항목은 최소 3-5문장의 상세한 분석을 포함할 것
+2. 각 검토 항목은 "현황 → 규정 → 문제점 → 개선방안" 구조로 서술할 것
+3. 구체적인 규정과 조항을 명확히 인용하고 그 내용을 설명할 것
+4. 모든 발견사항에 그 중요도와 잠재적 영향을 평가할 것
+5. 【4:1†source】와 같은 인용 표시는 포함하지 말 것
+6. 예시나 가정이 아닌 제공된 정보에 기반하여 분석할 것
+7. 전문적인 감사 용어와 문어체를 사용할 것
+8. 각 섹션별로 충분한 상세 분석을 제공할 것
+
+감사 전문가가 작성한 것과 같은 수준의 상세하고 전문적인 보고서를 작성해주세요.
 """
         
-        # GPT 응답 가져오기 - user_message를 전달하여 시스템 프롬프트와 연결
+        # GPT 응답 가져오기
         answer, success = get_clean_answer_from_gpts(user_message)
         if not success:
             return None
 
+        # 혹시 남아있을 수 있는 인용 마크 제거
+        answer = re.sub(r'\【\d+\:\d+\†source\】', '', answer)
+        
         document = Document()
         document.add_heading('일상감사 보고서 초안', level=0)
+        
+        # 보고서 내용을 적절한 형식으로 변환
         for line in answer.strip().split("\n"):
-            if line.strip().startswith("#"):
-                document.add_heading(line.replace("#", "").strip(), level=1)
+            if line.strip().startswith("# "):
+                document.add_heading(line.replace("# ", "").strip(), level=1)
+            elif line.strip().startswith("## "):
+                document.add_heading(line.replace("## ", "").strip(), level=2)
+            elif line.strip().startswith("### "):
+                document.add_heading(line.replace("### ", "").strip(), level=3)
+            elif line.strip().startswith("- ") or line.strip().startswith("* "):
+                # 불릿 포인트 처리
+                p = document.add_paragraph()
+                p.style = 'List Bullet'
+                p.add_run(line.strip()[2:])
             else:
-                document.add_paragraph(line.strip())
+                if line.strip():  # 빈 줄이 아닌 경우만 추가
+                    document.add_paragraph(line.strip())
 
         report_folder = os.path.join(base_folder, "draft_reports")
         os.makedirs(report_folder, exist_ok=True)
@@ -166,6 +190,7 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
     except Exception as e:
         logger.error(f"GPT 보고서 생성 오류: {str(e)}")
         return None
+
 
 
 # OpenAI API 정보 (하드코딩)
