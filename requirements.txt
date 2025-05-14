@@ -3,7 +3,7 @@ python-dotenv
 openai
 requests
 python-docx
-docxtpl
+python-docxtpl
 docx2txt
 matplotlib
 numpy
