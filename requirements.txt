@@ -3,3 +3,5 @@ python-dotenv
 openai
 requests
 python-docx
+python-docxtpl
+docx2txt
