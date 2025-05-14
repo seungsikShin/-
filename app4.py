@@ -124,7 +124,7 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
         
         # 명확하고 상세한 지시사항 포함
         user_message = f"""
-다음 정보를 기반으로 상세하고 전문적인 일상감사 보고서를 작성해주세요:
+다음 정보를 기반으로, 상세하고 전문적인 일상감사 보고서를 작성해주세요:
 
 ## 계약 기본 정보
 - 접수 ID: {submission_id}
@@ -149,6 +149,7 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
 6. 예시나 가정이 아닌 제공된 정보에 기반하여 분석할 것
 7. 전문적인 감사 용어와 문어체를 사용할 것
 8. 각 섹션별로 충분한 상세 분석을 제공할 것
+9. 볼드 처리된 키워드와 콜론(예: **계약명:**, **현황:**)을 사용하지 말고, 대신 일반 텍스트로 서술할 것
 
 감사 전문가가 작성한 것과 같은 수준의 상세하고 전문적인 보고서를 작성해주세요.
 """
@@ -158,8 +159,9 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
         if not success:
             return None
 
-        # 혹시 남아있을 수 있는 인용 마크 제거
+        # 인용 마크 및 볼드 콜론 패턴 제거
         answer = re.sub(r'\【\d+\:\d+\†source\】', '', answer)
+        answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)  # **키워드:** 형태 제거
         
         document = Document()
         document.add_heading('일상감사 보고서 초안', level=0)
@@ -190,6 +192,7 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
     except Exception as e:
         logger.error(f"GPT 보고서 생성 오류: {str(e)}")
         return None
+
 
 
 
