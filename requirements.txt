@@ -3,8 +3,7 @@ python-dotenv
 openai
 requests
 python-docx
-python-docxtpl
+git+https://github.com/elapouya/python-docx-template.git
 docx2txt
 matplotlib
 numpy
-git+https://github.com/elapouya/python-docx-template.git
