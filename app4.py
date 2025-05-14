@@ -28,12 +28,6 @@ import shutil
 from typing import List, Dict, Optional, Tuple, Any
 from docx import Document
 import zipfile
-import matplotlib.pyplot as plt
-import numpy as np
-from docx.shared import Pt, Inches
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-import io
-import json
 
 # 2) 여기서부터 Streamlit 호출 시작
 today = datetime.datetime.now().strftime("%Y%m%d")
@@ -156,11 +150,8 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
 7. 전문적인 감사 용어와 문어체를 사용할 것
 8. 각 섹션별로 충분한 상세 분석을 제공할 것
 9. 볼드 처리된 키워드와 콜론(예: **계약명:**, **현황:**)을 사용하지 말고, 대신 일반 텍스트로 서술할 것
-10. 표 형식으로 요약된 발견사항과 권고사항을 포함할 것
-11. 감사 결론은 '적정', '일부 부적정', '부적정' 중 하나로 명확히 제시할 것
 
-결과는 다음 구조로 JSON 형식으로 반환하세요:
-{{"content": "보고서 전체 내용(마크다운 형식)", "summary_table": [["항목", "발견사항", "위험수준", "권고사항"]], "conclusion": "종합 결론"}}
+감사 전문가가 작성한 것과 같은 수준의 상세하고 전문적인 보고서를 작성해주세요.
 """
         
         # GPT 응답 가져오기
@@ -168,63 +159,15 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
         if not success:
             return None
 
-        # JSON 파싱 시도
-        try:
-            report_data = json.loads(answer)
-            content = report_data.get("content", "")
-            summary_table = report_data.get("summary_table", [])
-            conclusion = report_data.get("conclusion", "")
-        except json.JSONDecodeError:
-            # JSON 파싱 실패 시 일반 텍스트로 처리
-            content = answer
-            summary_table = []
-            conclusion = ""
-            
         # 인용 마크 및 볼드 콜론 패턴 제거
-        content = re.sub(r'\【\d+\:\d+\†source\】', '', content)
-        content = re.sub(r'\*\*(.*?)\:\*\*', r'\1', content)  # **키워드:** 형태 제거
+        answer = re.sub(r'\【\d+\:\d+\†source\】', '', answer)
+        answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)  # **키워드:** 형태 제거
         
-        # 보고서 자동 품질 검사
-        quality_score, quality_issues = validate_report_quality(content)
-        
-        # 템플릿 사용하지 않고 직접 Document 객체로 문서 생성
         document = Document()
         document.add_heading('일상감사 보고서 초안', level=0)
         
-        # 스타일 설정
-        styles = document.styles
-        title_style = styles['Title']
-        title_style.font.size = Pt(18)
-        title_style.font.bold = True
-        
-        for i in range(1, 4):
-            heading_style = styles[f'Heading {i}']
-            heading_style.font.size = Pt(16 - i*2)
-            heading_style.font.bold = True
-        
-        # 기본 정보 섹션 추가
-        document.add_heading('감사 기본 정보', level=1)
-        info_table = document.add_table(rows=7, cols=2)
-        info_table.style = 'Table Grid'
-        
-        table_data = [
-            ("접수 ID", submission_id),
-            ("접수 부서", department),
-            ("담당자", f"{manager} ({phone})"),
-            ("계약명", contract_name),
-            ("계약 체결일", contract_date),
-            ("계약금액", contract_amount),
-            ("품질 점수", f"{quality_score}/100")
-        ]
-        
-        for i, (key, value) in enumerate(table_data):
-            cell = info_table.cell(i, 0)
-            cell.text = key
-            cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-            info_table.cell(i, 1).text = value
-        
-        # 보고서 내용 처리
-        for line in content.strip().split("\n"):
+        # 보고서 내용을 적절한 형식으로 변환
+        for line in answer.strip().split("\n"):
             if line.strip().startswith("# "):
                 document.add_heading(line.replace("# ", "").strip(), level=1)
             elif line.strip().startswith("## "):
@@ -236,96 +179,10 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
                 p = document.add_paragraph()
                 p.style = 'List Bullet'
                 p.add_run(line.strip()[2:])
-            elif line.strip().startswith("|") and "|" in line.strip()[1:]:
-                # 마크다운 테이블 처리는 여기서 생략 (복잡한 로직이 필요함)
-                # 실제 코드에서는 테이블 파싱 및 변환 로직 구현 필요
-                pass
             else:
                 if line.strip():  # 빈 줄이 아닌 경우만 추가
                     document.add_paragraph(line.strip())
-        
-        # 요약 테이블 추가 (있는 경우)
-        if summary_table and len(summary_table) > 1:
-            document.add_heading('발견사항 요약', level=1)
-            rows = len(summary_table)
-            cols = len(summary_table[0]) if rows > 0 else 0
-            
-            if rows > 0 and cols > 0:
-                table = document.add_table(rows=rows, cols=cols)
-                table.style = 'Table Grid'
-                
-                # 헤더 행 설정
-                for j, item in enumerate(summary_table[0]):
-                    cell = table.cell(0, j)
-                    cell.text = item
-                    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    run = cell.paragraphs[0].runs[0]
-                    run.font.bold = True
-                
-                # 데이터 행 설정
-                for i in range(1, rows):
-                    for j, item in enumerate(summary_table[i]):
-                        cell = table.cell(i, j)
-                        cell.text = item
-                        
-                # 테이블 너비 조정
-                table.autofit = False
-                table.allow_autofit = False
-                for cell in table.columns[0].cells:
-                    cell.width = Inches(1.0)
-                for cell in table.columns[1].cells:
-                    cell.width = Inches(2.0)
-        
-        # 감사 결론 추가
-        if conclusion:
-            document.add_heading('감사 결론', level=1)
-            document.add_paragraph(conclusion)
-        
-        # 차트 생성 및 추가 (예시: 발견사항 위험도 분포)
-        if summary_table and len(summary_table) > 1:
-            try:
-                # 위험도 카운트
-                risk_counts = {"상": 0, "중": 0, "하": 0}
-                
-                # 위험도 칼럼 인덱스 찾기 (보통 "위험수준" 또는 "위험도" 칼럼)
-                risk_idx = -1
-                for i, header in enumerate(summary_table[0]):
-                    if "위험" in header:
-                        risk_idx = i
-                        break
-                
-                if risk_idx >= 0:
-                    for i in range(1, len(summary_table)):
-                        risk_level = summary_table[i][risk_idx]
-                        if "상" in risk_level:
-                            risk_counts["상"] += 1
-                        elif "중" in risk_level:
-                            risk_counts["중"] += 1
-                        elif "하" in risk_level:
-                            risk_counts["하"] += 1
-                    
-                    # 파이 차트 생성
-                    plt.figure(figsize=(6, 4))
-                    labels = list(risk_counts.keys())
-                    sizes = list(risk_counts.values())
-                    colors = ['#FF9999','#66B2FF','#99FF99']
-                    
-                    plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-                    plt.axis('equal')
-                    plt.title('발견사항 위험도 분포')
-                    
-                    # 이미지를 바이트 스트림으로 저장
-                    img_stream = io.BytesIO()
-                    plt.savefig(img_stream, format='png')
-                    img_stream.seek(0)
-                    
-                    # 문서에 이미지 추가
-                    document.add_picture(img_stream, width=Inches(5.0))
-                    plt.close()
-            except Exception as e:
-                logger.error(f"차트 생성 오류: {str(e)}")
-        
-        # 저장
+
         report_folder = os.path.join(base_folder, "draft_reports")
         os.makedirs(report_folder, exist_ok=True)
         report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
@@ -336,18 +193,8 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
         logger.error(f"GPT 보고서 생성 오류: {str(e)}")
         return None
 
-  
-    # 품질 점수 계산
-    score = 0
-    failed_checks = []
-    
-    for check, passed in quality_checks.items():
-        if passed:
-            score += weights.get(check, 10)
-        else:
-            failed_checks.append(check)
-    
-    return score, failed_checks
+
+
 
 # OpenAI API 정보 (하드코딩)
 openai_api_key = st.secrets["OPENAI_API_KEY"]
