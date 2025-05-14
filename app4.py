@@ -120,9 +120,6 @@ st.session_state["last_session_time"] = current_time
 def generate_audit_report_with_gpt(submission_id, department, manager, phone, contract_name,
                                    contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
     try:
-        # 템플릿 파일 경로 설정
-        template_path = "일상감사 양식.docx"
-        
         # 제출 자료와 누락 자료를 읽기 쉬운 형식으로 변환
         uploaded_list = "\n".join([f"- {file}" for file in uploaded_files]) if uploaded_files else "없음"
         
@@ -193,177 +190,155 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
         # 보고서 자동 품질 검사
         quality_score, quality_issues = validate_report_quality(content)
         
-        # 템플릿이 있는 경우 템플릿 기반으로 문서 생성
-        if os.path.exists(template_path):
-            report_path = create_report_from_template(
-                template_path, 
-                content, 
-                summary_table, 
-                conclusion,
-                {
-                    "submission_id": submission_id,
-                    "department": department,
-                    "manager": manager,
-                    "phone": phone,
-                    "contract_name": contract_name,
-                    "contract_date": contract_date,
-                    "contract_amount": contract_amount,
-                    "uploaded_files": uploaded_files,
-                    "missing_files": missing_files_with_reasons,
-                    "quality_score": quality_score,
-                    "quality_issues": quality_issues
-                }
-            )
-            return report_path
-        else:
-            # 템플릿이 없는 경우 기존 방식으로 문서 생성
-            document = Document()
-            document.add_heading('일상감사 보고서 초안', level=0)
+        # 템플릿 사용하지 않고 직접 Document 객체로 문서 생성
+        document = Document()
+        document.add_heading('일상감사 보고서 초안', level=0)
+        
+        # 스타일 설정
+        styles = document.styles
+        title_style = styles['Title']
+        title_style.font.size = Pt(18)
+        title_style.font.bold = True
+        
+        for i in range(1, 4):
+            heading_style = styles[f'Heading {i}']
+            heading_style.font.size = Pt(16 - i*2)
+            heading_style.font.bold = True
+        
+        # 기본 정보 섹션 추가
+        document.add_heading('감사 기본 정보', level=1)
+        info_table = document.add_table(rows=7, cols=2)
+        info_table.style = 'Table Grid'
+        
+        table_data = [
+            ("접수 ID", submission_id),
+            ("접수 부서", department),
+            ("담당자", f"{manager} ({phone})"),
+            ("계약명", contract_name),
+            ("계약 체결일", contract_date),
+            ("계약금액", contract_amount),
+            ("품질 점수", f"{quality_score}/100")
+        ]
+        
+        for i, (key, value) in enumerate(table_data):
+            cell = info_table.cell(i, 0)
+            cell.text = key
+            cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            info_table.cell(i, 1).text = value
+        
+        # 보고서 내용 처리
+        for line in content.strip().split("\n"):
+            if line.strip().startswith("# "):
+                document.add_heading(line.replace("# ", "").strip(), level=1)
+            elif line.strip().startswith("## "):
+                document.add_heading(line.replace("## ", "").strip(), level=2)
+            elif line.strip().startswith("### "):
+                document.add_heading(line.replace("### ", "").strip(), level=3)
+            elif line.strip().startswith("- ") or line.strip().startswith("* "):
+                # 불릿 포인트 처리
+                p = document.add_paragraph()
+                p.style = 'List Bullet'
+                p.add_run(line.strip()[2:])
+            elif line.strip().startswith("|") and "|" in line.strip()[1:]:
+                # 마크다운 테이블 처리는 여기서 생략 (복잡한 로직이 필요함)
+                # 실제 코드에서는 테이블 파싱 및 변환 로직 구현 필요
+                pass
+            else:
+                if line.strip():  # 빈 줄이 아닌 경우만 추가
+                    document.add_paragraph(line.strip())
+        
+        # 요약 테이블 추가 (있는 경우)
+        if summary_table and len(summary_table) > 1:
+            document.add_heading('발견사항 요약', level=1)
+            rows = len(summary_table)
+            cols = len(summary_table[0]) if rows > 0 else 0
             
-            # 스타일 설정
-            styles = document.styles
-            title_style = styles['Title']
-            title_style.font.size = Pt(18)
-            title_style.font.bold = True
-            
-            for i in range(1, 4):
-                heading_style = styles[f'Heading {i}']
-                heading_style.font.size = Pt(16 - i*2)
-                heading_style.font.bold = True
-            
-            # 기본 정보 섹션 추가
-            document.add_heading('감사 기본 정보', level=1)
-            info_table = document.add_table(rows=7, cols=2)
-            info_table.style = 'Table Grid'
-            
-            table_data = [
-                ("접수 ID", submission_id),
-                ("접수 부서", department),
-                ("담당자", f"{manager} ({phone})"),
-                ("계약명", contract_name),
-                ("계약 체결일", contract_date),
-                ("계약금액", contract_amount),
-                ("품질 점수", f"{quality_score}/100")
-            ]
-            
-            for i, (key, value) in enumerate(table_data):
-                cell = info_table.cell(i, 0)
-                cell.text = key
-                cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                info_table.cell(i, 1).text = value
-            
-            # 보고서 내용 처리
-            for line in content.strip().split("\n"):
-                if line.strip().startswith("# "):
-                    document.add_heading(line.replace("# ", "").strip(), level=1)
-                elif line.strip().startswith("## "):
-                    document.add_heading(line.replace("## ", "").strip(), level=2)
-                elif line.strip().startswith("### "):
-                    document.add_heading(line.replace("### ", "").strip(), level=3)
-                elif line.strip().startswith("- ") or line.strip().startswith("* "):
-                    # 불릿 포인트 처리
-                    p = document.add_paragraph()
-                    p.style = 'List Bullet'
-                    p.add_run(line.strip()[2:])
-                elif line.strip().startswith("|") and "|" in line.strip()[1:]:
-                    # 마크다운 테이블 처리는 여기서 생략 (복잡한 로직이 필요함)
-                    # 실제 코드에서는 테이블 파싱 및 변환 로직 구현 필요
-                    pass
-                else:
-                    if line.strip():  # 빈 줄이 아닌 경우만 추가
-                        document.add_paragraph(line.strip())
-            
-            # 요약 테이블 추가 (있는 경우)
-            if summary_table and len(summary_table) > 1:
-                document.add_heading('발견사항 요약', level=1)
-                rows = len(summary_table)
-                cols = len(summary_table[0]) if rows > 0 else 0
+            if rows > 0 and cols > 0:
+                table = document.add_table(rows=rows, cols=cols)
+                table.style = 'Table Grid'
                 
-                if rows > 0 and cols > 0:
-                    table = document.add_table(rows=rows, cols=cols)
-                    table.style = 'Table Grid'
-                    
-                    # 헤더 행 설정
-                    for j, item in enumerate(summary_table[0]):
-                        cell = table.cell(0, j)
+                # 헤더 행 설정
+                for j, item in enumerate(summary_table[0]):
+                    cell = table.cell(0, j)
+                    cell.text = item
+                    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = cell.paragraphs[0].runs[0]
+                    run.font.bold = True
+                
+                # 데이터 행 설정
+                for i in range(1, rows):
+                    for j, item in enumerate(summary_table[i]):
+                        cell = table.cell(i, j)
                         cell.text = item
-                        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        run = cell.paragraphs[0].runs[0]
-                        run.font.bold = True
+                        
+                # 테이블 너비 조정
+                table.autofit = False
+                table.allow_autofit = False
+                for cell in table.columns[0].cells:
+                    cell.width = Inches(1.0)
+                for cell in table.columns[1].cells:
+                    cell.width = Inches(2.0)
+        
+        # 감사 결론 추가
+        if conclusion:
+            document.add_heading('감사 결론', level=1)
+            document.add_paragraph(conclusion)
+        
+        # 차트 생성 및 추가 (예시: 발견사항 위험도 분포)
+        if summary_table and len(summary_table) > 1:
+            try:
+                # 위험도 카운트
+                risk_counts = {"상": 0, "중": 0, "하": 0}
+                
+                # 위험도 칼럼 인덱스 찾기 (보통 "위험수준" 또는 "위험도" 칼럼)
+                risk_idx = -1
+                for i, header in enumerate(summary_table[0]):
+                    if "위험" in header:
+                        risk_idx = i
+                        break
+                
+                if risk_idx >= 0:
+                    for i in range(1, len(summary_table)):
+                        risk_level = summary_table[i][risk_idx]
+                        if "상" in risk_level:
+                            risk_counts["상"] += 1
+                        elif "중" in risk_level:
+                            risk_counts["중"] += 1
+                        elif "하" in risk_level:
+                            risk_counts["하"] += 1
                     
-                    # 데이터 행 설정
-                    for i in range(1, rows):
-                        for j, item in enumerate(summary_table[i]):
-                            cell = table.cell(i, j)
-                            cell.text = item
-                            
-                    # 테이블 너비 조정
-                    table.autofit = False
-                    table.allow_autofit = False
-                    for cell in table.columns[0].cells:
-                        cell.width = Inches(1.0)
-                    for cell in table.columns[1].cells:
-                        cell.width = Inches(2.0)
-            
-            # 감사 결론 추가
-            if conclusion:
-                document.add_heading('감사 결론', level=1)
-                document.add_paragraph(conclusion)
-            
-            # 차트 생성 및 추가 (예시: 발견사항 위험도 분포)
-            if summary_table and len(summary_table) > 1:
-                try:
-                    # 위험도 카운트
-                    risk_counts = {"상": 0, "중": 0, "하": 0}
+                    # 파이 차트 생성
+                    plt.figure(figsize=(6, 4))
+                    labels = list(risk_counts.keys())
+                    sizes = list(risk_counts.values())
+                    colors = ['#FF9999','#66B2FF','#99FF99']
                     
-                    # 위험도 칼럼 인덱스 찾기 (보통 "위험수준" 또는 "위험도" 칼럼)
-                    risk_idx = -1
-                    for i, header in enumerate(summary_table[0]):
-                        if "위험" in header:
-                            risk_idx = i
-                            break
+                    plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+                    plt.axis('equal')
+                    plt.title('발견사항 위험도 분포')
                     
-                    if risk_idx >= 0:
-                        for i in range(1, len(summary_table)):
-                            risk_level = summary_table[i][risk_idx]
-                            if "상" in risk_level:
-                                risk_counts["상"] += 1
-                            elif "중" in risk_level:
-                                risk_counts["중"] += 1
-                            elif "하" in risk_level:
-                                risk_counts["하"] += 1
-                        
-                        # 파이 차트 생성
-                        plt.figure(figsize=(6, 4))
-                        labels = list(risk_counts.keys())
-                        sizes = list(risk_counts.values())
-                        colors = ['#FF9999','#66B2FF','#99FF99']
-                        
-                        plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-                        plt.axis('equal')
-                        plt.title('발견사항 위험도 분포')
-                        
-                        # 이미지를 바이트 스트림으로 저장
-                        img_stream = io.BytesIO()
-                        plt.savefig(img_stream, format='png')
-                        img_stream.seek(0)
-                        
-                        # 문서에 이미지 추가
-                        document.add_picture(img_stream, width=Inches(5.0))
-                        plt.close()
-                except Exception as e:
-                    logger.error(f"차트 생성 오류: {str(e)}")
-            
-            # 저장
-            report_folder = os.path.join(base_folder, "draft_reports")
-            os.makedirs(report_folder, exist_ok=True)
-            report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
-            document.save(report_path)
-            return report_path
+                    # 이미지를 바이트 스트림으로 저장
+                    img_stream = io.BytesIO()
+                    plt.savefig(img_stream, format='png')
+                    img_stream.seek(0)
+                    
+                    # 문서에 이미지 추가
+                    document.add_picture(img_stream, width=Inches(5.0))
+                    plt.close()
+            except Exception as e:
+                logger.error(f"차트 생성 오류: {str(e)}")
+        
+        # 저장
+        report_folder = os.path.join(base_folder, "draft_reports")
+        os.makedirs(report_folder, exist_ok=True)
+        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
+        document.save(report_path)
+        return report_path
 
     except Exception as e:
         logger.error(f"GPT 보고서 생성 오류: {str(e)}")
         return None
+
 
 # 보고서 품질 검증 함수
 def validate_report_quality(report_text):
