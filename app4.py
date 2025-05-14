@@ -113,41 +113,15 @@ st.session_state["last_session_time"] = current_time
 def generate_audit_report_with_gpt(submission_id, department, manager, phone, contract_name,
                                    contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
     try:
-        uploaded_list_str = ", ".join(uploaded_files) if uploaded_files else "없음"
-        if missing_files_with_reasons:
-            missing_items = "\n".join([f"- {name}: {reason}" for name, reason in missing_files_with_reasons])
-        else:
-            missing_items = "없음"
-
-        user_context = f"""
-당신은 일상감사 실무자의 업무를 보조하는 AI 감사 도우미입니다.
-다음은 감사 접수 정보입니다:
-
-- 접수 ID: {submission_id}
-- 접수 부서: {department}
-- 담당자: {manager} ({phone})
-- 계약명: {contract_name}
-- 계약 체결일: {contract_date}
-- 계약금액: {contract_amount}
-- 제출된 자료: {uploaded_list_str}
-- 누락된 자료 및 사유:
-{missing_items}
-
-위 정보를 바탕으로 다음 항목을 포함한 일상감사 보고서 초안을 작성해 주세요:
-1. 감사 개요  
-2. 계약 요약  
-3. 계약 적정성 분석  
-4. 누락 자료 및 추가 요청 사항  
-5. 향후 검토 예정 사항  
-
-형식은 워드 스타일로 작성해 주세요.
-        """.strip()
-        prompt = SYSTEM_PROMPT + "\n\n" + user_context
+        # 시스템 프롬프트만을 사용하여 GPT에게 요청
+        prompt = SYSTEM_PROMPT + "\n\n"
         
+        # GPT에게 필요한 정보를 SYSTEM_PROMPT만으로 처리하게끔 수정
         answer, success = get_clean_answer_from_gpts(prompt)
         if not success:
             return None
 
+        # 보고서 생성
         document = Document()
         document.add_heading('일상감사 보고서 초안', level=0)
         for line in answer.strip().split("\n"):
@@ -165,6 +139,7 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
     except Exception as e:
         logger.error(f"GPT 보고서 생성 오류: {str(e)}")
         return None
+
 
 # OpenAI API 정보 (하드코딩)
 openai_api_key = st.secrets["OPENAI_API_KEY"]
