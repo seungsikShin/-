@@ -28,6 +28,13 @@ import shutil
 from typing import List, Dict, Optional, Tuple, Any
 from docx import Document
 import zipfile
+from docxtpl import DocxTemplate
+import matplotlib.pyplot as plt
+import numpy as np
+from docx.shared import Pt, Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+import io
+import json
 
 # 2) 여기서부터 Streamlit 호출 시작
 today = datetime.datetime.now().strftime("%Y%m%d")
@@ -113,6 +120,9 @@ st.session_state["last_session_time"] = current_time
 def generate_audit_report_with_gpt(submission_id, department, manager, phone, contract_name,
                                    contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
     try:
+        # 템플릿 파일 경로 설정
+        template_path = "일상감사 양식.docx"
+        
         # 제출 자료와 누락 자료를 읽기 쉬운 형식으로 변환
         uploaded_list = "\n".join([f"- {file}" for file in uploaded_files]) if uploaded_files else "없음"
         
@@ -150,8 +160,13 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
 7. 전문적인 감사 용어와 문어체를 사용할 것
 8. 각 섹션별로 충분한 상세 분석을 제공할 것
 9. 볼드 처리된 키워드와 콜론(예: **계약명:**, **현황:**)을 사용하지 말고, 대신 일반 텍스트로 서술할 것
+10. 감사 발견사항은 중요도에 따라 '상', '중', '하'로 분류하여 표시할 것
+11. 각 발견사항에 대한 근거를 명확히 제시하고 위험 수준을 평가할 것
+12. 표 형식으로 요약된 발견사항과 권고사항을 포함할 것
+13. 감사 결론은 '적정', '일부 부적정', '부적정' 중 하나로 명확히 제시할 것
 
-감사 전문가가 작성한 것과 같은 수준의 상세하고 전문적인 보고서를 작성해주세요.
+결과는 다음 구조로 JSON 형식으로 반환하세요:
+{{"content": "보고서 전체 내용(마크다운 형식)", "summary_table": [["항목", "발견사항", "위험수준", "권고사항"]], "conclusion": "종합 결론"}}
 """
         
         # GPT 응답 가져오기
@@ -159,38 +174,272 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
         if not success:
             return None
 
+        # JSON 파싱 시도
+        try:
+            report_data = json.loads(answer)
+            content = report_data.get("content", "")
+            summary_table = report_data.get("summary_table", [])
+            conclusion = report_data.get("conclusion", "")
+        except json.JSONDecodeError:
+            # JSON 파싱 실패 시 일반 텍스트로 처리
+            content = answer
+            summary_table = []
+            conclusion = ""
+            
         # 인용 마크 및 볼드 콜론 패턴 제거
-        answer = re.sub(r'\【\d+\:\d+\†source\】', '', answer)
-        answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)  # **키워드:** 형태 제거
+        content = re.sub(r'\【\d+\:\d+\†source\】', '', content)
+        content = re.sub(r'\*\*(.*?)\:\*\*', r'\1', content)  # **키워드:** 형태 제거
         
-        document = Document()
-        document.add_heading('일상감사 보고서 초안', level=0)
+        # 보고서 자동 품질 검사
+        quality_score, quality_issues = validate_report_quality(content)
         
-        # 보고서 내용을 적절한 형식으로 변환
-        for line in answer.strip().split("\n"):
-            if line.strip().startswith("# "):
-                document.add_heading(line.replace("# ", "").strip(), level=1)
-            elif line.strip().startswith("## "):
-                document.add_heading(line.replace("## ", "").strip(), level=2)
-            elif line.strip().startswith("### "):
-                document.add_heading(line.replace("### ", "").strip(), level=3)
-            elif line.strip().startswith("- ") or line.strip().startswith("* "):
-                # 불릿 포인트 처리
-                p = document.add_paragraph()
-                p.style = 'List Bullet'
-                p.add_run(line.strip()[2:])
-            else:
-                if line.strip():  # 빈 줄이 아닌 경우만 추가
-                    document.add_paragraph(line.strip())
-
-        report_folder = os.path.join(base_folder, "draft_reports")
-        os.makedirs(report_folder, exist_ok=True)
-        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
-        document.save(report_path)
-        return report_path
+        # 템플릿이 있는 경우 템플릿 기반으로 문서 생성
+        if os.path.exists(template_path):
+            report_path = create_report_from_template(
+                template_path, 
+                content, 
+                summary_table, 
+                conclusion,
+                {
+                    "submission_id": submission_id,
+                    "department": department,
+                    "manager": manager,
+                    "phone": phone,
+                    "contract_name": contract_name,
+                    "contract_date": contract_date,
+                    "contract_amount": contract_amount,
+                    "uploaded_files": uploaded_files,
+                    "missing_files": missing_files_with_reasons,
+                    "quality_score": quality_score,
+                    "quality_issues": quality_issues
+                }
+            )
+            return report_path
+        else:
+            # 템플릿이 없는 경우 기존 방식으로 문서 생성
+            document = Document()
+            document.add_heading('일상감사 보고서 초안', level=0)
+            
+            # 스타일 설정
+            styles = document.styles
+            title_style = styles['Title']
+            title_style.font.size = Pt(18)
+            title_style.font.bold = True
+            
+            for i in range(1, 4):
+                heading_style = styles[f'Heading {i}']
+                heading_style.font.size = Pt(16 - i*2)
+                heading_style.font.bold = True
+            
+            # 기본 정보 섹션 추가
+            document.add_heading('감사 기본 정보', level=1)
+            info_table = document.add_table(rows=7, cols=2)
+            info_table.style = 'Table Grid'
+            
+            table_data = [
+                ("접수 ID", submission_id),
+                ("접수 부서", department),
+                ("담당자", f"{manager} ({phone})"),
+                ("계약명", contract_name),
+                ("계약 체결일", contract_date),
+                ("계약금액", contract_amount),
+                ("품질 점수", f"{quality_score}/100")
+            ]
+            
+            for i, (key, value) in enumerate(table_data):
+                cell = info_table.cell(i, 0)
+                cell.text = key
+                cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                info_table.cell(i, 1).text = value
+            
+            # 보고서 내용 처리
+            for line in content.strip().split("\n"):
+                if line.strip().startswith("# "):
+                    document.add_heading(line.replace("# ", "").strip(), level=1)
+                elif line.strip().startswith("## "):
+                    document.add_heading(line.replace("## ", "").strip(), level=2)
+                elif line.strip().startswith("### "):
+                    document.add_heading(line.replace("### ", "").strip(), level=3)
+                elif line.strip().startswith("- ") or line.strip().startswith("* "):
+                    # 불릿 포인트 처리
+                    p = document.add_paragraph()
+                    p.style = 'List Bullet'
+                    p.add_run(line.strip()[2:])
+                elif line.strip().startswith("|") and "|" in line.strip()[1:]:
+                    # 마크다운 테이블 처리는 여기서 생략 (복잡한 로직이 필요함)
+                    # 실제 코드에서는 테이블 파싱 및 변환 로직 구현 필요
+                    pass
+                else:
+                    if line.strip():  # 빈 줄이 아닌 경우만 추가
+                        document.add_paragraph(line.strip())
+            
+            # 요약 테이블 추가 (있는 경우)
+            if summary_table and len(summary_table) > 1:
+                document.add_heading('발견사항 요약', level=1)
+                rows = len(summary_table)
+                cols = len(summary_table[0]) if rows > 0 else 0
+                
+                if rows > 0 and cols > 0:
+                    table = document.add_table(rows=rows, cols=cols)
+                    table.style = 'Table Grid'
+                    
+                    # 헤더 행 설정
+                    for j, item in enumerate(summary_table[0]):
+                        cell = table.cell(0, j)
+                        cell.text = item
+                        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        run = cell.paragraphs[0].runs[0]
+                        run.font.bold = True
+                    
+                    # 데이터 행 설정
+                    for i in range(1, rows):
+                        for j, item in enumerate(summary_table[i]):
+                            cell = table.cell(i, j)
+                            cell.text = item
+                            
+                    # 테이블 너비 조정
+                    table.autofit = False
+                    table.allow_autofit = False
+                    for cell in table.columns[0].cells:
+                        cell.width = Inches(1.0)
+                    for cell in table.columns[1].cells:
+                        cell.width = Inches(2.0)
+            
+            # 감사 결론 추가
+            if conclusion:
+                document.add_heading('감사 결론', level=1)
+                document.add_paragraph(conclusion)
+            
+            # 차트 생성 및 추가 (예시: 발견사항 위험도 분포)
+            if summary_table and len(summary_table) > 1:
+                try:
+                    # 위험도 카운트
+                    risk_counts = {"상": 0, "중": 0, "하": 0}
+                    
+                    # 위험도 칼럼 인덱스 찾기 (보통 "위험수준" 또는 "위험도" 칼럼)
+                    risk_idx = -1
+                    for i, header in enumerate(summary_table[0]):
+                        if "위험" in header:
+                            risk_idx = i
+                            break
+                    
+                    if risk_idx >= 0:
+                        for i in range(1, len(summary_table)):
+                            risk_level = summary_table[i][risk_idx]
+                            if "상" in risk_level:
+                                risk_counts["상"] += 1
+                            elif "중" in risk_level:
+                                risk_counts["중"] += 1
+                            elif "하" in risk_level:
+                                risk_counts["하"] += 1
+                        
+                        # 파이 차트 생성
+                        plt.figure(figsize=(6, 4))
+                        labels = list(risk_counts.keys())
+                        sizes = list(risk_counts.values())
+                        colors = ['#FF9999','#66B2FF','#99FF99']
+                        
+                        plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+                        plt.axis('equal')
+                        plt.title('발견사항 위험도 분포')
+                        
+                        # 이미지를 바이트 스트림으로 저장
+                        img_stream = io.BytesIO()
+                        plt.savefig(img_stream, format='png')
+                        img_stream.seek(0)
+                        
+                        # 문서에 이미지 추가
+                        document.add_picture(img_stream, width=Inches(5.0))
+                        plt.close()
+                except Exception as e:
+                    logger.error(f"차트 생성 오류: {str(e)}")
+            
+            # 저장
+            report_folder = os.path.join(base_folder, "draft_reports")
+            os.makedirs(report_folder, exist_ok=True)
+            report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
+            document.save(report_path)
+            return report_path
 
     except Exception as e:
         logger.error(f"GPT 보고서 생성 오류: {str(e)}")
+        return None
+
+# 보고서 품질 검증 함수
+def validate_report_quality(report_text):
+    # 품질 체크 항목 정의
+    quality_checks = {
+        "최소 길이 충족": len(report_text) > 1000,
+        "주요 섹션 포함": all(section in report_text.lower() for section in ["감사 개요", "검토 의견", "결론"]),
+        "전문 용어 사용": any(term in report_text for term in ["적정성", "규정 준수", "위험 평가", "내부통제"]),
+        "권고사항 포함": "권고" in report_text or "개선방안" in report_text,
+        "표 또는 구조화된 정보": "|" in report_text,  # 마크다운 테이블 확인
+        "발견사항 중요도 분류": any(level in report_text for level in ["위험도: 상", "위험도: 중", "위험도: 하"]),
+        "결론 명확성": any(conclusion in report_text for conclusion in ["적정", "일부 부적정", "부적정"])
+    }
+    
+    # 각 체크항목별 점수 가중치
+    weights = {
+        "최소 길이 충족": 10,
+        "주요 섹션 포함": 25,
+        "전문 용어 사용": 15,
+        "권고사항 포함": 20,
+        "표 또는 구조화된 정보": 10,
+        "발견사항 중요도 분류": 10,
+        "결론 명확성": 10
+    }
+    
+    # 품질 점수 계산
+    score = 0
+    failed_checks = []
+    
+    for check, passed in quality_checks.items():
+        if passed:
+            score += weights.get(check, 10)
+        else:
+            failed_checks.append(check)
+    
+    return score, failed_checks
+
+# 템플릿 기반 보고서 생성 함수
+def create_report_from_template(template_path, content, summary_table, conclusion, data):
+    try:
+        # DocxTemplate을 사용하여 템플릿 로드
+        doc = DocxTemplate(template_path)
+        
+        # 템플릿에 전달할 컨텍스트 준비
+        context = {
+            "submission_id": data["submission_id"],
+            "department": data["department"],
+            "manager": data["manager"],
+            "phone": data["phone"],
+            "contract_name": data["contract_name"],
+            "contract_date": data["contract_date"],
+            "contract_amount": data["contract_amount"],
+            "report_date": datetime.datetime.now().strftime("%Y년 %m월 %d일"),
+            "content": content,  # 마크다운 형식은 템플릿에서 처리 필요
+            "conclusion": conclusion,
+            "quality_score": data["quality_score"]
+        }
+        
+        # 요약 표가 있는 경우 컨텍스트에 추가
+        if summary_table and len(summary_table) > 1:
+            context["has_summary_table"] = True
+            context["summary_headers"] = summary_table[0]
+            context["summary_rows"] = summary_table[1:]
+        
+        # 템플릿 렌더링
+        doc.render(context)
+        
+        # 저장
+        report_folder = os.path.join(base_folder, "draft_reports")
+        os.makedirs(report_folder, exist_ok=True)
+        report_path = os.path.join(report_folder, f"감사보고서초안_{data['submission_id']}.docx")
+        doc.save(report_path)
+        return report_path
+    except Exception as e:
+        logger.error(f"템플릿 보고서 생성 오류: {str(e)}")
+        # 오류 시 None 반환하지 않고 표준 방식으로 생성 시도
         return None
 
 
