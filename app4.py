@@ -113,21 +113,39 @@ st.session_state["last_session_time"] = current_time
 def generate_audit_report_with_gpt(submission_id, department, manager, phone, contract_name,
                                    contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
     try:
-        # 필요한 데이터만 구조화하여 전달
-        audit_data = {
-            "submission_id": submission_id,
-            "department": department,
-            "manager": manager,
-            "phone": phone,
-            "contract_name": contract_name,
-            "contract_date": contract_date,
-            "contract_amount": contract_amount,
-            "uploaded_files": uploaded_files if uploaded_files else [],
-            "missing_files": missing_files_with_reasons if missing_files_with_reasons else []
-        }
+        # 제출 자료와 누락 자료를 읽기 쉬운 형식으로 변환
+        uploaded_list = "\n".join([f"- {file}" for file in uploaded_files]) if uploaded_files else "없음"
         
-        # 데이터만 전달, 지시사항은 시스템 프롬프트에 의존
-        answer, success = get_clean_answer_from_gpts(json.dumps(audit_data, ensure_ascii=False))
+        missing_list = ""
+        if missing_files_with_reasons:
+            missing_list = "\n".join([f"- {name}: {reason}" for name, reason in missing_files_with_reasons])
+        else:
+            missing_list = "없음"
+        
+        # 명확한 지시와 함께 데이터 제공
+        user_message = f"""
+감사 대상 계약 정보를 바탕으로 일상감사 보고서 초안을 작성해 주세요:
+
+## 계약 정보
+- 접수 ID: {submission_id}
+- 접수 부서: {department}
+- 담당자: {manager} ({phone})
+- 계약명: {contract_name}
+- 계약 체결일: {contract_date}
+- 계약금액: {contract_amount}
+
+## 제출된 자료
+{uploaded_list}
+
+## 누락된 자료 및 사유
+{missing_list}
+
+위 정보를 바탕으로 감사 전문가 수준의 보고서를 작성하세요. 
+보고서는 시스템 프롬프트에 명시된 구조와 품질 기준을 준수해야 합니다.
+"""
+        
+        # GPT 응답 가져오기 - user_message를 전달하여 시스템 프롬프트와 연결
+        answer, success = get_clean_answer_from_gpts(user_message)
         if not success:
             return None
 
