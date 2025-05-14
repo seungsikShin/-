@@ -5,3 +5,5 @@ requests
 python-docx
 python-docxtpl
 docx2txt
+matplotlib
+numpy
