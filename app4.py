@@ -228,23 +228,20 @@ required_files = [
 # 파일 검증 함수 - 모든 파일 허용
 def validate_file(file) -> Tuple[bool, str]:
     """
-    #업로드된 파일의 유효성을 검사합니다.
-    #모든 파일을 허용하도록 수정됨.
+    업로드된 파일의 유효성을 검사합니다. (모든 파일 허용)
     
     Args:
         file: 업로드된 파일 객체
         
     Returns:
-        (유효성 여부, 오류 메시지)
+        Tuple[bool, str]: (유효성 여부, 오류 메시지)
     """
     try:
-        # 파일이 존재하는지만 확인
-        if file is not None:
-            return True, "파일이 유효합니다."
-        return False, "파일이 없습니다."
+        return (True, "파일이 유효합니다.") if file else (False, "파일이 없습니다.")
     except Exception as e:
         logger.error(f"파일 검증 오류: {str(e)}")
-        return False, f"파일 검증 중 오류가 발생했습니다: {str(e)}"
+        return False, f"검증 오류: {str(e)}"
+
 
 # 파일 저장 함수
 def save_uploaded_file(uploaded_file, folder_path) -> Optional[str]:
