@@ -7,3 +7,4 @@ python-docxtpl
 docx2txt
 matplotlib
 numpy
+git+https://github.com/elapouya/python-docx-template.git
