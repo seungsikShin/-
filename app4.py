@@ -110,18 +110,36 @@ else:
 st.session_state["last_session_time"] = current_time
 
 # ✅ GPT 감사보고서 docx 생성 함수
-def generate_audit_report_with_gpt(submission_id, department, manager, phone, contract_name,
-                                   contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
+def generate_audit_report_with_gpt(submission_id, uploaded_files) -> Optional[str]:
     try:
-        # 시스템 프롬프트만을 사용하여 GPT에게 요청
-        prompt = SYSTEM_PROMPT + "\n\n"
+        # 업로드된 파일들의 정보를 기반으로 분석할 수 있도록 프롬프트 작성
+        file_info = ""
+        for file in uploaded_files:
+            # 파일 정보를 하나씩 GPT에게 전달 (파일명을 포함한 설명)
+            file_info += f"- {file}\n"
+
+        # GPT에게 필요한 요청을 더 구체적으로 작성
+        prompt = f"""
+        다음은 감사 보고서를 작성하기 위한 업로드된 파일 목록입니다. 각 파일을 분석하여, 사업개요, 업체선정 절차, 예산검토, 계약서 검토 등에 대한 내용을 작성하십시오.
         
-        # GPT에게 필요한 정보를 SYSTEM_PROMPT만으로 처리하게끔 수정
+        업로드된 파일:
+        {file_info}
+
+        1. **사업개요**: 사업명, 계약금액, 예산과목 등을 바탕으로 사업 개요를 작성하십시오.
+        2. **업체 선정 절차**: 업체 선정의 적정성, 평가 기준, 선정 방법 등을 검토하십시오.
+        3. **예산 검토**: 예산 초과 여부, 예산 승인 문서 유무 등을 확인하십시오.
+        4. **계약서 검토**: 계약서의 조건, 서명 여부 등을 점검하십시오.
+        5. **최종 의견**: 위 항목에 대한 종합적인 분석을 포함한 최종 의견을 작성하십시오.
+        
+        각 항목은 "1) 현황 요약 → 2) 규정 근거 → 3) 리스크 → 4) 개선 권고" 순서로 작성해 주세요.
+        """
+
+        # GPT에게 요청하여 보고서 작성
         answer, success = get_clean_answer_from_gpts(prompt)
         if not success:
             return None
 
-        # 보고서 생성
+        # 작성된 보고서를 Word 문서로 저장
         document = Document()
         document.add_heading('일상감사 보고서 초안', level=0)
         for line in answer.strip().split("\n"):
@@ -130,10 +148,12 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
             else:
                 document.add_paragraph(line.strip())
 
+        # 보고서 저장 경로 설정
         report_folder = os.path.join(base_folder, "draft_reports")
         os.makedirs(report_folder, exist_ok=True)
         report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
         document.save(report_path)
+        
         return report_path
 
     except Exception as e:
