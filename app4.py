@@ -28,7 +28,6 @@ import shutil
 from typing import List, Dict, Optional, Tuple, Any
 from docx import Document
 import zipfile
-from docxtpl import DocxTemplate
 import matplotlib.pyplot as plt
 import numpy as np
 from docx.shared import Pt, Inches
@@ -157,10 +156,8 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
 7. 전문적인 감사 용어와 문어체를 사용할 것
 8. 각 섹션별로 충분한 상세 분석을 제공할 것
 9. 볼드 처리된 키워드와 콜론(예: **계약명:**, **현황:**)을 사용하지 말고, 대신 일반 텍스트로 서술할 것
-10. 감사 발견사항은 중요도에 따라 '상', '중', '하'로 분류하여 표시할 것
-11. 각 발견사항에 대한 근거를 명확히 제시하고 위험 수준을 평가할 것
-12. 표 형식으로 요약된 발견사항과 권고사항을 포함할 것
-13. 감사 결론은 '적정', '일부 부적정', '부적정' 중 하나로 명확히 제시할 것
+10. 표 형식으로 요약된 발견사항과 권고사항을 포함할 것
+11. 감사 결론은 '적정', '일부 부적정', '부적정' 중 하나로 명확히 제시할 것
 
 결과는 다음 구조로 JSON 형식으로 반환하세요:
 {{"content": "보고서 전체 내용(마크다운 형식)", "summary_table": [["항목", "발견사항", "위험수준", "권고사항"]], "conclusion": "종합 결론"}}
@@ -339,31 +336,7 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
         logger.error(f"GPT 보고서 생성 오류: {str(e)}")
         return None
 
-
-# 보고서 품질 검증 함수
-def validate_report_quality(report_text):
-    # 품질 체크 항목 정의
-    quality_checks = {
-        "최소 길이 충족": len(report_text) > 1000,
-        "주요 섹션 포함": all(section in report_text.lower() for section in ["감사 개요", "검토 의견", "결론"]),
-        "전문 용어 사용": any(term in report_text for term in ["적정성", "규정 준수", "위험 평가", "내부통제"]),
-        "권고사항 포함": "권고" in report_text or "개선방안" in report_text,
-        "표 또는 구조화된 정보": "|" in report_text,  # 마크다운 테이블 확인
-        "발견사항 중요도 분류": any(level in report_text for level in ["위험도: 상", "위험도: 중", "위험도: 하"]),
-        "결론 명확성": any(conclusion in report_text for conclusion in ["적정", "일부 부적정", "부적정"])
-    }
-    
-    # 각 체크항목별 점수 가중치
-    weights = {
-        "최소 길이 충족": 10,
-        "주요 섹션 포함": 25,
-        "전문 용어 사용": 15,
-        "권고사항 포함": 20,
-        "표 또는 구조화된 정보": 10,
-        "발견사항 중요도 분류": 10,
-        "결론 명확성": 10
-    }
-    
+  
     # 품질 점수 계산
     score = 0
     failed_checks = []
@@ -375,50 +348,6 @@ def validate_report_quality(report_text):
             failed_checks.append(check)
     
     return score, failed_checks
-
-# 템플릿 기반 보고서 생성 함수
-def create_report_from_template(template_path, content, summary_table, conclusion, data):
-    try:
-        # DocxTemplate을 사용하여 템플릿 로드
-        doc = DocxTemplate(template_path)
-        
-        # 템플릿에 전달할 컨텍스트 준비
-        context = {
-            "submission_id": data["submission_id"],
-            "department": data["department"],
-            "manager": data["manager"],
-            "phone": data["phone"],
-            "contract_name": data["contract_name"],
-            "contract_date": data["contract_date"],
-            "contract_amount": data["contract_amount"],
-            "report_date": datetime.datetime.now().strftime("%Y년 %m월 %d일"),
-            "content": content,  # 마크다운 형식은 템플릿에서 처리 필요
-            "conclusion": conclusion,
-            "quality_score": data["quality_score"]
-        }
-        
-        # 요약 표가 있는 경우 컨텍스트에 추가
-        if summary_table and len(summary_table) > 1:
-            context["has_summary_table"] = True
-            context["summary_headers"] = summary_table[0]
-            context["summary_rows"] = summary_table[1:]
-        
-        # 템플릿 렌더링
-        doc.render(context)
-        
-        # 저장
-        report_folder = os.path.join(base_folder, "draft_reports")
-        os.makedirs(report_folder, exist_ok=True)
-        report_path = os.path.join(report_folder, f"감사보고서초안_{data['submission_id']}.docx")
-        doc.save(report_path)
-        return report_path
-    except Exception as e:
-        logger.error(f"템플릿 보고서 생성 오류: {str(e)}")
-        # 오류 시 None 반환하지 않고 표준 방식으로 생성 시도
-        return None
-
-
-
 
 # OpenAI API 정보 (하드코딩)
 openai_api_key = st.secrets["OPENAI_API_KEY"]
