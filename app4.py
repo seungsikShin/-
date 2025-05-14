@@ -228,7 +228,7 @@ required_files = [
 # 파일 검증 함수 - 모든 파일 허용
 def validate_file(file) -> Tuple[bool, str]:
     """
-    업로드된 파일의 유효성을 검사합니다. (모든 파일 허용)
+    # 업로드된 파일의 유효성을 검사합니다. (모든 파일 허용)
     
     Args:
         file: 업로드된 파일 객체
@@ -971,7 +971,7 @@ elif menu == "접수 완료":
 # 페이지 하단 정보
 st.sidebar.markdown("---")
 st.sidebar.info("""
- 2025 일상감사 접수 시스템
+2025 일상감사 접수 시스템
 문의:  
     OKH. 감사팀
     📞 02-2009-6512/ 신승식
