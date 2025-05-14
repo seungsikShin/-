@@ -120,6 +120,28 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
             missing_items = "없음"
 
         user_context = f"""
+당신은 일상감사 실무자의 업무를 보조하는 AI 감사 도우미입니다.
+다음은 감사 접수 정보입니다:
+
+- 접수 ID: {submission_id}
+- 접수 부서: {department}
+- 담당자: {manager} ({phone})
+- 계약명: {contract_name}
+- 계약 체결일: {contract_date}
+- 계약금액: {contract_amount}
+- 제출된 자료: {uploaded_list_str}
+- 누락된 자료 및 사유:
+{missing_items}
+
+위 정보를 바탕으로 다음 항목을 포함한 일상감사 보고서 초안을 작성해 주세요:
+1. 감사 개요  
+2. 계약 요약  
+3. 계약 적정성 분석  
+4. 누락 자료 및 추가 요청 사항  
+5. 향후 검토 예정 사항  
+
+형식은 워드 스타일로 작성해 주세요.
+        """.strip()
         prompt = SYSTEM_PROMPT + "\n\n" + user_context
         
         answer, success = get_clean_answer_from_gpts(prompt)
@@ -228,20 +250,23 @@ required_files = [
 # 파일 검증 함수 - 모든 파일 허용
 def validate_file(file) -> Tuple[bool, str]:
     """
-    # 업로드된 파일의 유효성을 검사합니다. (모든 파일 허용)
+    업로드된 파일의 유효성을 검사합니다.
+    모든 파일을 허용하도록 수정됨.
     
     Args:
         file: 업로드된 파일 객체
         
     Returns:
-        Tuple[bool, str]: (유효성 여부, 오류 메시지)
+        (유효성 여부, 오류 메시지)
     """
     try:
-        return (True, "파일이 유효합니다.") if file else (False, "파일이 없습니다.")
+        # 파일이 존재하는지만 확인
+        if file is not None:
+            return True, "파일이 유효합니다."
+        return False, "파일이 없습니다."
     except Exception as e:
         logger.error(f"파일 검증 오류: {str(e)}")
-        return False, f"검증 오류: {str(e)}"
-
+        return False, f"파일 검증 중 오류가 발생했습니다: {str(e)}"
 
 # 파일 저장 함수
 def save_uploaded_file(uploaded_file, folder_path) -> Optional[str]:
@@ -971,7 +996,7 @@ elif menu == "접수 완료":
 # 페이지 하단 정보
 st.sidebar.markdown("---")
 st.sidebar.info("""
-2025 일상감사 접수 시스템
+© 2025 일상감사 접수 시스템
 문의:  
     OKH. 감사팀
     📞 02-2009-6512/ 신승식
