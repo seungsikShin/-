@@ -29,6 +29,10 @@ from typing import List, Dict, Optional, Tuple, Any
 from docx import Document
 import zipfile
 
+# --- 페이지 상태 관리 변수 추가 (맨 위에)
+if "page" not in st.session_state:
+    st.session_state["page"] = "질의응답"
+
 # 2) 여기서부터 Streamlit 호출 시작
 today = datetime.datetime.now().strftime("%Y%m%d")
 # 세션 쿠키 관리 추가
@@ -639,13 +643,20 @@ init_db()
 # 메뉴 정의
 menu_options = ["질의응답", "파일 업로드", "접수 완료"]
 
-# 쿼리 파라미터에서 메뉴 초기값 가져오기
-default_menu = st.query_params.get("menu", "질의응답")
-if isinstance(default_menu, list):
-    default_menu = default_menu[0]
-if default_menu not in menu_options:
-    default_menu = "질의응답"
-  
+# 쿼리 파라미터 대신 세션 상태 사용
+menu = st.session_state["page"]
+
+# 사이드바 메뉴 라디오 버튼도 세션 상태로 연동
+selected_menu = st.sidebar.radio(
+    "메뉴 선택",
+    menu_options,
+    index=menu_options.index(menu),
+    key="menu_radio"
+)
+if selected_menu != st.session_state["page"]:
+    st.session_state["page"] = selected_menu
+    st.rerun()
+
 # 사이드바 메뉴
 st.sidebar.title("📋 일상감사 접수 시스템")
 st.sidebar.info(f"접수 ID: {submission_id}")
@@ -688,16 +699,8 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
         except Exception as e:
             st.error(f"초기화 중 오류가 발생했습니다: {e}")
 
-# 메뉴 선택 라디오 버튼 (쿼리 파라미터 기반 index 설정)
-menu = st.sidebar.radio(
-    "메뉴 선택",
-    menu_options,
-    index=menu_options.index(default_menu),
-    key="menu"
-)
-
 # 질의응답 페이지 - 첫 번째 페이지로 추가
-if menu == "질의응답":
+if st.session_state["page"] == "질의응답":
     st.title("💬 일상감사 질의응답")
     
     st.markdown("""
@@ -749,15 +752,14 @@ if menu == "질의응답":
     
     st.markdown("---")
     if st.button("다음 단계: 파일 업로드", key="next_to_upload", use_container_width=True, type="primary"):
-        # 마지막 질문/답변 저장
         if len(st.session_state.messages) >= 2:
             st.session_state["last_question"] = st.session_state.messages[-2]["content"]
             st.session_state["last_answer"] = st.session_state.messages[-1]["content"]
-        st.query_params["menu"] = "파일 업로드"
+        st.session_state["page"] = "파일 업로드"
         st.rerun()
 
 # 파일 업로드 페이지 - elif로 변경
-elif menu == "파일 업로드":
+elif st.session_state["page"] == "파일 업로드":
     st.title("📤 일상감사 파일 업로드")
 
     # 접수 정보 입력 섹션 추가
@@ -943,12 +945,11 @@ elif menu == "파일 업로드":
         if incomplete_files:
             st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete_files))
         else:
-            # 페이지 전환
-            st.query_params["menu"] = "접수 완료"
+            st.session_state["page"] = "접수 완료"
             st.rerun()
       
 # 접수 완료 페이지
-elif menu == "접수 완료":
+elif st.session_state["page"] == "접수 완료":
     st.title("✅ 일상감사 접수 완료")
 
     # ─── DB에서 접수 정보 불러오기 ───
