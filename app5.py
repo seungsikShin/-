@@ -1018,7 +1018,7 @@ elif st.session_state["page"] == "접수 완료":
     recipient_email = st.text_input("수신자 이메일 주소", value=to_email)
     report_recipient_email = st.text_input(
         "보고서 회신 받을 이메일 주소",
-        value=recipient_email,
+        value="",
         help="감사보고서 완료 후 회신받을 이메일 주소를 입력하세요"
     )
     email_subject = st.text_input("이메일 제목", value=f"일상감사 접수: {submission_id}")
