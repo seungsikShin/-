@@ -1025,57 +1025,155 @@ elif menu == "접수 완료":
 # ================= 질의응답 페이지 =================
 if menu == "질의응답":
     st.title("💬 일상감사 질의응답")
+    
+    # 상단 설명 - 간결하게 유지
     st.markdown("""
-    ### 일상감사 접수에 관한 질문이 있으신가요?
-    아래 채팅창에 질문을 입력해주세요. AI 비서가 답변해 드립니다.
+    일상감사 접수에 관한 질문을 입력하시면 AI가 답변해 드립니다.
     """)
-
+    
+    # 채팅 컨테이너 스타일 정의 (높이 고정, 스크롤 가능)
+    st.markdown("""
+    <style>
+    .chat-container {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        height: 400px;
+        overflow-y: auto;
+        background-color: #f9f9f9;
+    }
+    .user-message {
+        background-color: #e1f5fe;
+        border-radius: 15px 15px 0 15px;
+        padding: 10px 15px;
+        margin: 5px 0;
+        max-width: 80%;
+        margin-left: auto;
+        text-align: right;
+    }
+    .assistant-message {
+        background-color: #f0f0f0;
+        border-radius: 15px 15px 15px 0;
+        padding: 10px 15px;
+        margin: 5px 0;
+        max-width: 80%;
+        text-align: left;
+    }
+    .message-time {
+        font-size: 0.7em;
+        color: #666;
+        margin-top: 5px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     # 세션 상태 초기화
     if "messages" not in st.session_state:
         st.session_state.messages = []
-        st.session_state.messages.append({"role": "assistant", "content": "안녕하세요! 일상감사 접수에 관해 궁금한 점을 물어봐주세요."})
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": "안녕하세요! 일상감사 접수에 관해 궁금한 점을 물어봐주세요.",
+            "time": datetime.datetime.now().strftime("%H:%M")
+        })
     if "thread_id" not in st.session_state:
         st.session_state.thread_id = None
-
-    # 이전 메시지 표시 (내장 아이콘 사용)
-    for message in st.session_state.messages:
-        # 내장 아이콘 자동 사용
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
-
+    
+    # 채팅 컨테이너 생성
+    chat_container = st.container()
+    with chat_container:
+        # 커스텀 HTML 채팅 인터페이스
+        messages_html = ""
+        for message in st.session_state.messages:
+            role = message["role"]
+            content = message["content"]
+            time = message.get("time", "")
+            
+            if role == "user":
+                messages_html += f"""
+                <div style=\"display: flex; justify-content: flex-end;\">
+                    <div class=\"user-message\">
+                        {content}
+                        <div class=\"message-time\">{time}</div>
+                    </div>
+                </div>
+                """
+            else:
+                messages_html += f"""
+                <div style=\"display: flex; justify-content: flex-start;\">
+                    <div class=\"assistant-message\">
+                        {content}
+                        <div class=\"message-time\">{time}</div>
+                    </div>
+                </div>
+                """
+        
+        # HTML 채팅 컨테이너에 메시지 표시
+        st.markdown(f'<div class="chat-container">{messages_html}</div>', unsafe_allow_html=True)
+    
     # 사용자 입력 처리
-    if prompt := st.chat_input("질문을 입력하세요"):
-        # 사용자 메시지 표시
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.write(prompt)
-
-        # AI 응답 생성 중 표시
-        with st.chat_message("assistant"):
-            with st.spinner("응답 생성 중..."):
-                response = get_assistant_response(prompt, "asst_FS7Vu9qyONYlq8O8Zab471Ek")
-                st.write(response)
-        # AI 응답 저장
-        st.session_state.messages.append({"role": "assistant", "content": response})
-
-    st.markdown("---")
-    if st.button("질문 완료, 파일 업로드 시작", key="start_upload"):
-        # 마지막 질문/답변 저장
-        if len(st.session_state.messages) >= 2:
-            st.session_state["last_question"] = st.session_state.messages[-2]["content"]
-            st.session_state["last_answer"] = st.session_state.messages[-1]["content"]
-        st.query_params["menu"] = "파일 업로드"
+    if prompt := st.chat_input("질문을 입력하세요..."):
+        current_time = datetime.datetime.now().strftime("%H:%M")
+        
+        # 사용자 메시지 저장
+        st.session_state.messages.append({
+            "role": "user", 
+            "content": prompt,
+            "time": current_time
+        })
+        
+        # AI 응답 생성
+        with st.spinner(""):
+            # 응답 생성 함수 호출
+            response = get_assistant_response(prompt, "asst_FS7Vu9qyONYlq8O8Zab471Ek")
+            
+            # 응답 저장
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": response,
+                "time": datetime.datetime.now().strftime("%H:%M")
+            })
+        
+        # 새로운 메시지 추가 후 페이지 리프레시
         st.rerun()
+    
+    # 자바스크립트로 자동 스크롤 추가
+    st.markdown("""
+    <script>
+    function scrollToBottom() {
+        const chatContainer = document.querySelector('.chat-container');
+        if (chatContainer) {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+    }
+    // 페이지 로드 후 자동 실행
+    window.addEventListener('load', scrollToBottom);
+    </script>
+    """, unsafe_allow_html=True)
+    
+    # 하단 버튼 - 더 눈에 띄게 스타일링
+    st.markdown("---")
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.markdown("""
+        <div style="margin-top: 15px;">
+            <p>다음 단계로 진행하시겠습니까?</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        if st.button("파일 업로드 페이지로 이동", key="start_upload", 
+                   use_container_width=True, type="primary"):
+            # 마지막 질문/답변 저장
+            if len(st.session_state.messages) >= 2:
+                st.session_state["last_question"] = st.session_state.messages[-2]["content"]
+                st.session_state["last_answer"] = st.session_state.messages[-1]["content"]
+            st.query_params["menu"] = "파일 업로드"
+            st.rerun()
 
-# ========== OpenAI Assistant API 연동 함수 추가 ==========
+# ========== OpenAI Assistant API 연동 함수 (스트리밍 효과) ==========
 def get_assistant_response(question: str, assistant_id: str) -> str:
     """
     OpenAI Assistants API를 사용하여 질문에 대한 응답을 생성합니다.
-    Args:
-        question: 사용자 질문
-        assistant_id: 사용할 Assistant ID
-    Returns:
-        응답 텍스트
     """
     try:
         import time
@@ -1085,55 +1183,71 @@ def get_assistant_response(question: str, assistant_id: str) -> str:
             "Content-Type": "application/json",
             "OpenAI-Beta": "assistants=v2"
         }
-        # 대화 맥락 유지: thread_id 세션에 저장
+        
+        # Thread ID 관리
         if "thread_id" not in st.session_state or st.session_state.thread_id is None:
-            # 새 스레드 생성
             thread_url = "https://api.openai.com/v1/threads"
             thread_response = requests.post(thread_url, headers=headers)
             if thread_response.status_code != 200:
-                return f"[스레드 생성 실패] {thread_response.text}"
+                return "시스템 연결에 실패했습니다. 잠시 후 다시 시도해주세요."
             thread_id = thread_response.json()["id"]
             st.session_state.thread_id = thread_id
         else:
             thread_id = st.session_state.thread_id
+            
         # 메시지 추가
         message_url = f"https://api.openai.com/v1/threads/{thread_id}/messages"
-        add_msg = {
-            "role": "user",
-            "content": question
-        }
+        add_msg = {"role": "user", "content": question}
+        
         msg_response = requests.post(message_url, headers=headers, json=add_msg)
         if msg_response.status_code != 200:
-            return f"[메시지 추가 실패] {msg_response.text}"
-        # 스레드 실행
+            return "메시지 전송에 실패했습니다. 다시 시도해주세요."
+            
+        # 스트리밍 표시를 위한 컨테이너
+        message_placeholder = st.empty()
+        full_response = ""
+        
+        # 실행 요청
         run_url = f"https://api.openai.com/v1/threads/{thread_id}/runs"
         run_response = requests.post(
             run_url, 
             headers=headers, 
             json={"assistant_id": assistant_id}
         )
+        
         if run_response.status_code != 200:
-            return f"[실행 실패] {run_response.text}"
+            return "처리 요청에 실패했습니다."
+            
         run_id = run_response.json()["id"]
-        # 실행 완료 확인 (폴링)
+        
+        # 처리 상태 확인 및 스트리밍 효과 표시
+        dots = ""
         while True:
             check = requests.get(f"{run_url}/{run_id}", headers=headers).json()
+            
             if check["status"] == "completed":
                 break
             elif check["status"] in ["failed", "cancelled", "expired"]:
-                return f"[실행 상태: {check['status']}] 응답 생성에 실패했습니다."
-            time.sleep(1)
-        # 메시지 목록 조회하여 응답 추출
+                return "응답 생성에 실패했습니다. 다른 질문을 시도해보세요."
+                
+            # 로딩 표시
+            dots = "." * (len(dots) % 3 + 1)
+            message_placeholder.markdown(f"처리 중{dots}")
+            time.sleep(0.5)
+            
+        # 응답 가져오기
         msgs = requests.get(message_url, headers=headers).json()["data"]
         for msg in msgs:
             if msg.get("role") == "assistant":
                 for content in msg.get("content", []):
                     if content.get("type") == "text":
                         return content["text"]["value"].strip()
+                        
         return "응답을 가져올 수 없습니다."
+        
     except Exception as e:
         logger.error(f"Assistant 응답 오류: {str(e)}")
-        return f"오류가 발생했습니다: {str(e)}"
+        return "오류가 발생했습니다. 잠시 후 다시 시도해주세요."
 
 # 페이지 하단 정보
 st.sidebar.markdown("---")
