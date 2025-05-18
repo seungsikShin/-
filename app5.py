@@ -491,7 +491,86 @@ def get_clean_answer_from_gpts(question: str) -> Tuple[str, bool]:
 
     except Exception as e:
         return f"[예외 발생] {str(e)}", False
+
+# OpenAI Assistant API 연동 함수
+def get_assistant_response(question: str) -> str:
+    """
+    OpenAI Assistants API를 사용하여 질문에 대한 응답을 생성합니다.
+    """
+    try:
+        import time
+        import re  # 정규표현식 모듈 추가
         
+        # 일상감사 질의응답용 Assistant ID
+        assistant_id = "asst_FS7Vu9qyONYlq8O8Zab471Ek"
+        
+        headers = {
+            "Authorization": f"Bearer {openai_api_key}",
+            "OpenAI-Organization": openai_org_id,
+            "Content-Type": "application/json",
+            "OpenAI-Beta": "assistants=v2"
+        }
+        
+        # 대화 맥락 유지: thread_id 세션에 저장
+        if "thread_id" not in st.session_state or st.session_state.thread_id is None:
+            # 새 스레드 생성
+            thread_url = "https://api.openai.com/v1/threads"
+            thread_response = requests.post(thread_url, headers=headers)
+            if thread_response.status_code != 200:
+                return f"시스템 연결에 실패했습니다. 잠시 후 다시 시도해주세요."
+            thread_id = thread_response.json()["id"]
+            st.session_state.thread_id = thread_id
+        else:
+            thread_id = st.session_state.thread_id
+        
+        # 메시지 추가
+        message_url = f"https://api.openai.com/v1/threads/{thread_id}/messages"
+        add_msg = {
+            "role": "user",
+            "content": question
+        }
+        msg_response = requests.post(message_url, headers=headers, json=add_msg)
+        if msg_response.status_code != 200:
+            return "메시지 전송에 실패했습니다. 다시 시도해주세요."
+        
+        # 스레드 실행
+        run_url = f"https://api.openai.com/v1/threads/{thread_id}/runs"
+        run_response = requests.post(
+            run_url, 
+            headers=headers, 
+            json={"assistant_id": assistant_id}
+        )
+        if run_response.status_code != 200:
+            return "처리 요청에 실패했습니다."
+        
+        run_id = run_response.json()["id"]
+        
+        # 실행 완료 확인 (폴링)
+        while True:
+            check = requests.get(f"{run_url}/{run_id}", headers=headers).json()
+            if check["status"] == "completed":
+                break
+            elif check["status"] in ["failed", "cancelled", "expired"]:
+                return "응답 생성에 실패했습니다. 다시 시도해주세요."
+            time.sleep(1)
+        
+        # 메시지 목록 조회하여 응답 추출
+        msgs = requests.get(message_url, headers=headers).json()["data"]
+        for msg in msgs:
+            if msg.get("role") == "assistant":
+                for content in msg.get("content", []):
+                    if content.get("type") == "text":
+                        response_text = content["text"]["value"].strip()
+                        # 인용 표시 제거 - 여러 형식의 인용 마크 처리
+                        cleaned_response = re.sub(r'\【.*?\】', '', response_text)
+                        return cleaned_response
+        
+        return "응답을 가져올 수 없습니다."
+    
+    except Exception as e:
+        logger.error(f"Assistant 응답 오류: {str(e)}")
+        return f"오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+
 # 이메일 발송 함수 (보안 강화)
 def send_email(subject, body, to_email, attachments=None) -> Tuple[bool, str]:
     """
@@ -558,14 +637,14 @@ def send_email(subject, body, to_email, attachments=None) -> Tuple[bool, str]:
 init_db()
 
 # 메뉴 정의
-menu_options = ["파일 업로드", "접수 완료"]
+menu_options = ["질의응답", "파일 업로드", "접수 완료"]
 
 # 쿼리 파라미터에서 메뉴 초기값 가져오기
-default_menu = st.query_params.get("menu", "파일 업로드")
+default_menu = st.query_params.get("menu", "질의응답")
 if isinstance(default_menu, list):
     default_menu = default_menu[0]
 if default_menu not in menu_options:
-    default_menu = "파일 업로드"
+    default_menu = "질의응답"
   
 # 사이드바 메뉴
 st.sidebar.title("📋 일상감사 접수 시스템")
@@ -623,9 +702,68 @@ menu = st.sidebar.radio(
     key="menu"
 )
 
+# 질의응답 페이지 - 첫 번째 페이지로 추가
+if menu == "질의응답":
+    st.title("💬 일상감사 질의응답")
+    
+    st.markdown("""
+    ### 일상감사 접수에 관한 질문이 있으신가요?
+    아래 채팅창에 질문을 입력해주세요. AI 비서가 답변해 드립니다.
+    """)
+    
+    # 세션 상태 초기화
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": "안녕하세요! 일상감사 접수에 관해 궁금한 점을 물어봐주세요.",
+            "time": datetime.datetime.now().strftime("%H:%M")
+        })
+    if "thread_id" not in st.session_state:
+        st.session_state.thread_id = None
+    
+    # 이전 메시지 표시
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+    
+    # 사용자 입력 처리
+    if prompt := st.chat_input("질문을 입력하세요"):
+        current_time = datetime.datetime.now().strftime("%H:%M")
+        
+        # 사용자 메시지 표시 및 저장
+        st.session_state.messages.append({
+            "role": "user", 
+            "content": prompt,
+            "time": current_time
+        })
+        with st.chat_message("user"):
+            st.write(prompt)
 
-# 파일 업로드 페이지 - menu 변수가 정의된 후에 사용
-if menu == "파일 업로드":
+        # AI 응답 생성 중 표시
+        with st.chat_message("assistant"):
+            with st.spinner("응답 생성 중..."):
+                response = get_assistant_response(prompt)
+                st.write(response)
+        
+        # AI 응답 저장
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": response,
+            "time": datetime.datetime.now().strftime("%H:%M")
+        })
+    
+    st.markdown("---")
+    if st.button("다음 단계: 파일 업로드", key="next_to_upload", use_container_width=True, type="primary"):
+        # 마지막 질문/답변 저장
+        if len(st.session_state.messages) >= 2:
+            st.session_state["last_question"] = st.session_state.messages[-2]["content"]
+            st.session_state["last_answer"] = st.session_state.messages[-1]["content"]
+        st.query_params["menu"] = "파일 업로드"
+        st.rerun()
+
+# 파일 업로드 페이지 - elif로 변경
+elif menu == "파일 업로드":
     st.title("📤 일상감사 파일 업로드")
 
     # 접수 정보 입력 섹션 추가
