@@ -646,7 +646,12 @@ menu_options = ["질의응답", "파일 업로드", "접수 완료"]
 # 쿼리 파라미터 대신 세션 상태 사용
 menu = st.session_state["page"]
 
-# 사이드바 메뉴 라디오 버튼도 세션 상태로 연동
+# 사이드바 메뉴
+st.sidebar.title("📋 일상감사 접수 시스템")
+st.sidebar.info(f"접수 ID: {submission_id}")
+st.sidebar.markdown("---")
+
+# 사이드바 메뉴 라디오 버튼 (원래 위치로 이동)
 selected_menu = st.sidebar.radio(
     "메뉴 선택",
     menu_options,
@@ -656,11 +661,6 @@ selected_menu = st.sidebar.radio(
 if selected_menu != st.session_state["page"]:
     st.session_state["page"] = selected_menu
     st.rerun()
-
-# 사이드바 메뉴
-st.sidebar.title("📋 일상감사 접수 시스템")
-st.sidebar.info(f"접수 ID: {submission_id}")
-st.sidebar.markdown("---")
 
 with st.sidebar.expander("초기화 옵션", expanded=True):
     if st.button("전체 시스템 초기화", key="btn_reset_all", use_container_width=True, type="primary"):
