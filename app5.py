@@ -1016,6 +1016,11 @@ elif st.session_state["page"] == "접수 완료":
 # 이메일 발송 섹션
     st.markdown("### 이메일 발송")
     recipient_email = st.text_input("수신자 이메일 주소", value=to_email)
+    report_recipient_email = st.text_input(
+        "보고서 회신 받을 이메일 주소",
+        value=recipient_email,
+        help="감사보고서 완료 후 회신받을 이메일 주소를 입력하세요"
+    )
     email_subject = st.text_input("이메일 제목", value=f"일상감사 접수: {submission_id}")
     additional_message = st.text_area("추가 메시지", value="")
 
@@ -1060,7 +1065,8 @@ elif st.session_state["page"] == "접수 완료":
             
             # 이메일 본문 작성
             body = f"일상감사 접수 ID: {submission_id}\n"
-            body += f"접수일자: {upload_date}\n\n"
+            body += f"접수일자: {upload_date}\n"
+            body += f"보고서 회신 이메일: {report_recipient_email}\n\n"
             
             if additional_message:
                 body += f"추가 메시지:\n{additional_message}\n\n"
@@ -1110,7 +1116,8 @@ elif st.session_state["page"] == "접수 완료":
                     **접수 ID**: {submission_id}  
                     **접수일자**: {upload_date}  
                     **처리상태**: 접수완료  
-                    **이메일 발송**: 완료 ({recipient_email})
+                    **이메일 발송**: 완료 ({recipient_email})  
+                    **보고서 회신 이메일**: {report_recipient_email}
                     """)
                     
                     # 다운로드 버튼 제공
@@ -1121,6 +1128,7 @@ elif st.session_state["page"] == "접수 완료":
                     접수일자: {upload_date}
                     처리상태: 접수완료
                     이메일 발송: 완료 ({recipient_email})
+                    보고서 회신 이메일: {report_recipient_email}
                     
                     업로드된 파일 목록:
                     """
