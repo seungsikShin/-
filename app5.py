@@ -495,25 +495,23 @@ def get_clean_answer_from_gpts(question: str) -> Tuple[str, bool]:
 # OpenAI Assistant API 연동 함수
 def get_assistant_response(question: str) -> str:
     """
-    OpenAI Assistants API를 사용하여 질문에 대한 응답을 생성합니다.
+    OpenAI Assistants API를 사용하여 질문에 대한 응답을 스트리밍으로 생성합니다.
     """
     try:
         import time
-        import re  # 정규표현식 모듈 추가
+        import re
+        import json
+        import sseclient
         
-        # 일상감사 질의응답용 Assistant ID
         assistant_id = "asst_FS7Vu9qyONYlq8O8Zab471Ek"
-        
         headers = {
             "Authorization": f"Bearer {openai_api_key}",
             "OpenAI-Organization": openai_org_id,
             "Content-Type": "application/json",
             "OpenAI-Beta": "assistants=v2"
         }
-        
         # 대화 맥락 유지: thread_id 세션에 저장
         if "thread_id" not in st.session_state or st.session_state.thread_id is None:
-            # 새 스레드 생성
             thread_url = "https://api.openai.com/v1/threads"
             thread_response = requests.post(thread_url, headers=headers)
             if thread_response.status_code != 200:
@@ -522,7 +520,6 @@ def get_assistant_response(question: str) -> str:
             st.session_state.thread_id = thread_id
         else:
             thread_id = st.session_state.thread_id
-        
         # 메시지 추가
         message_url = f"https://api.openai.com/v1/threads/{thread_id}/messages"
         add_msg = {
@@ -532,41 +529,37 @@ def get_assistant_response(question: str) -> str:
         msg_response = requests.post(message_url, headers=headers, json=add_msg)
         if msg_response.status_code != 200:
             return "메시지 전송에 실패했습니다. 다시 시도해주세요."
-        
-        # 스레드 실행
+        # 스레드 실행 (stream=True)
         run_url = f"https://api.openai.com/v1/threads/{thread_id}/runs"
         run_response = requests.post(
-            run_url, 
-            headers=headers, 
-            json={"assistant_id": assistant_id}
+            run_url,
+            headers=headers,
+            json={"assistant_id": assistant_id, "stream": True},
+            stream=True
         )
         if run_response.status_code != 200:
             return "처리 요청에 실패했습니다."
-        
-        run_id = run_response.json()["id"]
-        
-        # 실행 완료 확인 (폴링)
-        while True:
-            check = requests.get(f"{run_url}/{run_id}", headers=headers).json()
-            if check["status"] == "completed":
-                break
-            elif check["status"] in ["failed", "cancelled", "expired"]:
-                return "응답 생성에 실패했습니다. 다시 시도해주세요."
-            time.sleep(1)
-        
-        # 메시지 목록 조회하여 응답 추출
-        msgs = requests.get(message_url, headers=headers).json()["data"]
-        for msg in msgs:
-            if msg.get("role") == "assistant":
-                for content in msg.get("content", []):
-                    if content.get("type") == "text":
-                        response_text = content["text"]["value"].strip()
-                        # 인용 표시 제거 - 여러 형식의 인용 마크 처리
-                        cleaned_response = re.sub(r'\【.*?\】', '', response_text)
-                        return cleaned_response
-        
-        return "응답을 가져올 수 없습니다."
-    
+        # 스트리밍 응답 처리
+        placeholder = st.empty()
+        collected_messages = []
+        # SSEClient로 스트림 파싱
+        try:
+            for line in run_response.iter_lines():
+                if line:
+                    try:
+                        data = json.loads(line.decode('utf-8'))
+                        # OpenAI의 streaming 응답 구조에 맞게 파싱
+                        if "choices" in data and data["choices"]:
+                            delta = data["choices"][0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                collected_messages.append(content)
+                                placeholder.markdown("".join(collected_messages))
+                    except Exception:
+                        continue
+        except Exception as e:
+            logger.error(f"스트리밍 파싱 오류: {str(e)}")
+        return "".join(collected_messages)
     except Exception as e:
         logger.error(f"Assistant 응답 오류: {str(e)}")
         return f"오류가 발생했습니다. 잠시 후 다시 시도해주세요."
