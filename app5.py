@@ -1030,9 +1030,6 @@ if menu == "질의응답":
     아래 채팅창에 질문을 입력해주세요. AI 비서가 답변해 드립니다.
     """)
 
-    # 아바타 이미지 경로 (원하는 경로로 교체)
-    assistant_avatar = "content/assistant_icon.png"  # 실제 경로에 맞게 조정 필요
-
     # 세션 상태 초기화
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -1040,10 +1037,10 @@ if menu == "질의응답":
     if "thread_id" not in st.session_state:
         st.session_state.thread_id = None
 
-    # 이전 메시지 표시 (아바타 적용)
+    # 이전 메시지 표시 (내장 아이콘 사용)
     for message in st.session_state.messages:
-        avatar = assistant_avatar if message["role"] == "assistant" else None
-        with st.chat_message(message["role"], avatar=avatar):
+        # 내장 아이콘 자동 사용
+        with st.chat_message(message["role"]):
             st.write(message["content"])
 
     # 사용자 입력 처리
@@ -1054,7 +1051,7 @@ if menu == "질의응답":
             st.write(prompt)
 
         # AI 응답 생성 중 표시
-        with st.chat_message("assistant", avatar=assistant_avatar):
+        with st.chat_message("assistant"):
             with st.spinner("응답 생성 중..."):
                 response = get_assistant_response(prompt, "asst_FS7Vu9qyONYlq8O8Zab471Ek")
                 st.write(response)
