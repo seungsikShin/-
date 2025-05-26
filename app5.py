@@ -832,19 +832,34 @@ elif st.session_state["page"] == "파일 업로드":
         c.execute("SELECT id, file_name, file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
                   (submission_id, f"%{file}%"))
         uploaded_record = c.fetchone()
-        # 사유 입력 확인
         c.execute("SELECT reason FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
                   (submission_id, file))
         reason_record = c.fetchone()
         conn.close()
-        # 1. 이미 업로드된 파일이 있는 경우 - 삭제 버튼 포함
+        # 1. 이미 업로드된 파일이 있는 경우 - 삭제 버튼 및 사유 삭제 버튼 포함
         if uploaded_record:
             file_id, file_name, file_path = uploaded_record
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                st.success(f"✅ {file_name}")
-            with col2:
-                show_delete_confirmation(file_name, file_id, file_path)
+            if reason_record:
+                reason = reason_record[0]
+                col1, col2, col3 = st.columns([4, 1, 1])
+                with col1:
+                    st.success(f"✅ {file_name}")
+                    st.info(f"📝 {file}: {reason}")
+                with col2:
+                    show_delete_confirmation(file_name, file_id, file_path)
+                with col3:
+                    if st.button("❌", key=f"delete_reason_{file}", help="사유 삭제"):
+                        if delete_missing_reason(submission_id, file):
+                            st.success("사유가 삭제되었습니다.")
+                            st.rerun()
+                        else:
+                            st.error("사유 삭제에 실패했습니다.")
+            else:
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.success(f"✅ {file_name}")
+                with col2:
+                    show_delete_confirmation(file_name, file_id, file_path)
             uploaded_count += 1
             continue
         # 2. 사유가 입력된 경우 - 사유 삭제 버튼 포함
