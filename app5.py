@@ -209,6 +209,65 @@ from_email     = st.secrets["EMAIL_ADDRESS"]
 from_password  = st.secrets["EMAIL_PASSWORD"]
 to_email       = "1504282@okfngroup.com"         # 수신자 이메일 주소
 
+# 파일/사유 삭제 및 삭제 다이얼로그 함수들 (DB 초기화 바로 위에 위치)
+def delete_uploaded_file(file_id, file_path):
+    """업로드된 파일을 서버와 DB에서 삭제합니다."""
+    try:
+        # 1. 실제 파일 삭제
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            logger.info(f"파일 삭제 완료: {file_path}")
+        # 2. DB에서 삭제
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
+        c.execute("DELETE FROM uploaded_files WHERE id = ?", (file_id,))
+        conn.commit()
+        conn.close()
+        logger.info(f"DB 레코드 삭제 완료: file_id={file_id}")
+        return True
+    except Exception as e:
+        error_msg = f"파일 삭제 중 오류 발생: {str(e)}"
+        st.error(error_msg)
+        logger.error(error_msg)
+        return False
+
+def delete_missing_reason(submission_id, file_name):
+    """누락 파일 사유를 DB에서 삭제합니다."""
+    try:
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
+        c.execute("DELETE FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
+                  (submission_id, file_name))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"사유 삭제 오류: {str(e)}")
+        return False
+
+def show_delete_confirmation(file_name, file_id, file_path):
+    """삭제 확인 다이얼로그"""
+    if f"confirm_delete_{file_id}" not in st.session_state:
+        st.session_state[f"confirm_delete_{file_id}"] = False
+    if st.session_state[f"confirm_delete_{file_id}"]:
+        st.warning(f"'{file_name}' 파일을 정말 삭제하시겠습니까?")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("삭제 확인", key=f"confirm_yes_{file_id}", type="primary"):
+                if delete_uploaded_file(file_id, file_path):
+                    st.success("파일이 삭제되었습니다.")
+                    st.session_state[f"confirm_delete_{file_id}"] = False
+                    st.rerun()
+                else:
+                    st.error("파일 삭제에 실패했습니다.")
+        with col2:
+            if st.button("취소", key=f"confirm_no_{file_id}"):
+                st.session_state[f"confirm_delete_{file_id}"] = False
+                st.rerun()
+    else:
+        if st.button("🗑️", key=f"delete_{file_id}", help="파일 삭제"):
+            st.session_state[f"confirm_delete_{file_id}"] = True
+            st.rerun()
 
 # 데이터베이스 초기화
 def init_db():
@@ -1174,74 +1233,6 @@ elif st.session_state["page"] == "접수 완료":
                     gc.collect()
                 else:
                     st.error(f"이메일 발송 중 오류가 발생했습니다: {message}")
-
-def delete_uploaded_file(file_id, file_path):
-    """
-    업로드된 파일을 서버와 DB에서 삭제합니다.
-    Args:
-        file_id: DB의 파일 ID
-        file_path: 서버의 파일 경로
-    Returns:
-        성공 여부
-    """
-    try:
-        # 1. 실제 파일 삭제
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            logger.info(f"파일 삭제 완료: {file_path}")
-        # 2. DB에서 삭제
-        conn = sqlite3.connect('audit_system.db')
-        c = conn.cursor()
-        c.execute("DELETE FROM uploaded_files WHERE id = ?", (file_id,))
-        conn.commit()
-        conn.close()
-        logger.info(f"DB 레코드 삭제 완료: file_id={file_id}")
-        return True
-    except Exception as e:
-        error_msg = f"파일 삭제 중 오류 발생: {str(e)}"
-        st.error(error_msg)
-        logger.error(error_msg)
-        return False
-
-def delete_missing_reason(submission_id, file_name):
-    """
-    누락 파일 사유를 DB에서 삭제합니다.
-    """
-    try:
-        conn = sqlite3.connect('audit_system.db')
-        c = conn.cursor()
-        c.execute("DELETE FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
-                  (submission_id, file_name))
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        logger.error(f"사유 삭제 오류: {str(e)}")
-        return False
-
-def show_delete_confirmation(file_name, file_id, file_path):
-    """삭제 확인 다이얼로그"""
-    if f"confirm_delete_{file_id}" not in st.session_state:
-        st.session_state[f"confirm_delete_{file_id}"] = False
-    if st.session_state[f"confirm_delete_{file_id}"]:
-        st.warning(f"'{file_name}' 파일을 정말 삭제하시겠습니까?")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("삭제 확인", key=f"confirm_yes_{file_id}", type="primary"):
-                if delete_uploaded_file(file_id, file_path):
-                    st.success("파일이 삭제되었습니다.")
-                    st.session_state[f"confirm_delete_{file_id}"] = False
-                    st.rerun()
-                else:
-                    st.error("파일 삭제에 실패했습니다.")
-        with col2:
-            if st.button("취소", key=f"confirm_no_{file_id}"):
-                st.session_state[f"confirm_delete_{file_id}"] = False
-                st.rerun()
-    else:
-        if st.button("🗑️", key=f"delete_{file_id}", help="파일 삭제"):
-            st.session_state[f"confirm_delete_{file_id}"] = True
-            st.rerun()
 
 # 페이지 하단 정보
 st.sidebar.markdown("---")
