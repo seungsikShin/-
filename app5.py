@@ -826,90 +826,87 @@ elif st.session_state["page"] == "파일 업로드":
     # 각 파일에 대한 업로드 칸을 생성하고 체크 표시 및 사유 입력 받기
     for idx, file in enumerate(required_files):
         st.markdown(f"### {idx+1}. {file}")
-        col1, col2 = st.columns([3, 1])
-        
-        # 파일 유형 별 DB에 업로드됐는지 확인
+        # DB에서 업로드된 파일 정보 확인
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
-        c.execute("SELECT file_name FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
-                (submission_id, f"%{file}%"))
-        is_file_uploaded = bool(c.fetchone())
-        
-        # 사유 입력됐는지 확인
+        c.execute("SELECT id, file_name, file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
+                  (submission_id, f"%{file}%"))
+        uploaded_record = c.fetchone()
+        # 사유 입력 확인
         c.execute("SELECT reason FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
-                (submission_id, file))
+                  (submission_id, file))
         reason_record = c.fetchone()
         conn.close()
-        
-        # 이미 업로드된 파일이면 메시지만 표시
-        if is_file_uploaded:
-            st.success(f"✅ {file} 업로드 완료됨")
+        # 1. 이미 업로드된 파일이 있는 경우 - 삭제 버튼 포함
+        if uploaded_record:
+            file_id, file_name, file_path = uploaded_record
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.success(f"✅ {file_name}")
+            with col2:
+                show_delete_confirmation(file_name, file_id, file_path)
             uploaded_count += 1
             continue
-        
-        # 이미 사유가 있는 경우 표시
-        if reason_record:
-            st.info(f"📝 {file}: {reason_record[0]}")
-            uploaded_count += 1
-            continue
-        
-        with col1:
-            # 사용자별 고유 키 생성
-            user_key = st.session_state["cookie_session_id"]
-            if "timestamp" not in st.session_state:
-                st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            timestamp = st.session_state["timestamp"]
-            
-            # 파일 업로더에 사용자별 고유 키 사용
-            uploaded_file = st.file_uploader(
-                f"📄 {file} 업로드", 
-                type=None,
-                key=f"uploader_{st.session_state['uploader_reset_token']}_{file}"
-            )
-
-        with col2:
-            if uploaded_file:
-                # 파일 검증
-                is_valid, message = validate_file(uploaded_file)
-        
-                if is_valid:
-                    # 파일 저장
-                    file_path = save_uploaded_file(uploaded_file, session_folder)
-
-                    if file_path:
-                        # 파일 정보와 필수 파일 유형 정보도 함께 저장
-                        file_type = os.path.splitext(uploaded_file.name)[1]
-                        save_file_to_db(
-                            submission_id, 
-                            f"{file} - {uploaded_file.name}", # 파일 유형을 파일명에 포함
-                            file_path, 
-                            file_type, 
-                            uploaded_file.size
-                        )
-                        st.success(f"✅ 업로드 완료")
-                        uploaded_count += 1
-                        
-                        # 메모리 해제를 위한 코드 추가
-                        del uploaded_file
-                        gc.collect()
-                        
-                        # 페이지 다시 로드하여 UI 갱신
+        # 2. 사유가 입력된 경우 - 사유 삭제 버튼 포함
+        elif reason_record:
+            reason = reason_record[0]
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.info(f"📝 {file}: {reason}")
+            with col2:
+                if st.button("❌", key=f"delete_reason_{file}", help="사유 삭제"):
+                    if delete_missing_reason(submission_id, file):
+                        st.success("사유가 삭제되었습니다.")
                         st.rerun()
-                else:
-                    st.error(message)
-            else:
-                reason = st.text_input(
-                    f"{file} 업로드하지 않은 이유", 
-                    key=f"reason_{user_key}_{timestamp}_{file}",
-                    help="파일을 업로드하지 않는 경우 반드시 사유를 입력해주세요."
+                    else:
+                        st.error("사유 삭제에 실패했습니다.")
+            uploaded_count += 1
+            continue
+        # 3. 신규 업로드 또는 사유 입력
+        else:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                user_key = st.session_state["cookie_session_id"]
+                if "timestamp" not in st.session_state:
+                    st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                timestamp = st.session_state["timestamp"]
+                uploaded_file = st.file_uploader(
+                    f"📄 {file} 업로드", 
+                    type=None,
+                    key=f"uploader_{st.session_state['uploader_reset_token']}_{file}"
                 )
-                
-                if reason:
-                    if save_missing_reason_to_db(submission_id, file, reason):
-                        st.info("사유가 저장되었습니다.")
-                        uploaded_count += 1
-                        # 사유 저장 후 페이지 리로드
-                        st.rerun()
+            with col2:
+                if uploaded_file:
+                    is_valid, message = validate_file(uploaded_file)
+                    if is_valid:
+                        file_path = save_uploaded_file(uploaded_file, session_folder)
+                        if file_path:
+                            file_type = os.path.splitext(uploaded_file.name)[1]
+                            save_file_to_db(
+                                submission_id, 
+                                f"{file} - {uploaded_file.name}",
+                                file_path, 
+                                file_type, 
+                                uploaded_file.size
+                            )
+                            st.success(f"✅ 업로드 완료")
+                            uploaded_count += 1
+                            del uploaded_file
+                            gc.collect()
+                            st.rerun()
+                    else:
+                        st.error(message)
+                else:
+                    reason = st.text_input(
+                        f"{file} 업로드하지 않은 이유", 
+                        key=f"reason_{user_key}_{timestamp}_{file}",
+                        help="파일을 업로드하지 않는 경우 반드시 사유를 입력해주세요."
+                    )
+                    if reason:
+                        if save_missing_reason_to_db(submission_id, file, reason):
+                            st.info("사유가 저장되었습니다.")
+                            uploaded_count += 1
+                            st.rerun()
 
     st.markdown("---")
 
@@ -1163,6 +1160,73 @@ elif st.session_state["page"] == "접수 완료":
                 else:
                     st.error(f"이메일 발송 중 오류가 발생했습니다: {message}")
 
+def delete_uploaded_file(file_id, file_path):
+    """
+    업로드된 파일을 서버와 DB에서 삭제합니다.
+    Args:
+        file_id: DB의 파일 ID
+        file_path: 서버의 파일 경로
+    Returns:
+        성공 여부
+    """
+    try:
+        # 1. 실제 파일 삭제
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            logger.info(f"파일 삭제 완료: {file_path}")
+        # 2. DB에서 삭제
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
+        c.execute("DELETE FROM uploaded_files WHERE id = ?", (file_id,))
+        conn.commit()
+        conn.close()
+        logger.info(f"DB 레코드 삭제 완료: file_id={file_id}")
+        return True
+    except Exception as e:
+        error_msg = f"파일 삭제 중 오류 발생: {str(e)}"
+        st.error(error_msg)
+        logger.error(error_msg)
+        return False
+
+def delete_missing_reason(submission_id, file_name):
+    """
+    누락 파일 사유를 DB에서 삭제합니다.
+    """
+    try:
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
+        c.execute("DELETE FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
+                  (submission_id, file_name))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"사유 삭제 오류: {str(e)}")
+        return False
+
+def show_delete_confirmation(file_name, file_id, file_path):
+    """삭제 확인 다이얼로그"""
+    if f"confirm_delete_{file_id}" not in st.session_state:
+        st.session_state[f"confirm_delete_{file_id}"] = False
+    if st.session_state[f"confirm_delete_{file_id}"]:
+        st.warning(f"'{file_name}' 파일을 정말 삭제하시겠습니까?")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("삭제 확인", key=f"confirm_yes_{file_id}", type="primary"):
+                if delete_uploaded_file(file_id, file_path):
+                    st.success("파일이 삭제되었습니다.")
+                    st.session_state[f"confirm_delete_{file_id}"] = False
+                    st.rerun()
+                else:
+                    st.error("파일 삭제에 실패했습니다.")
+        with col2:
+            if st.button("취소", key=f"confirm_no_{file_id}"):
+                st.session_state[f"confirm_delete_{file_id}"] = False
+                st.rerun()
+    else:
+        if st.button("🗑️", key=f"delete_{file_id}", help="파일 삭제"):
+            st.session_state[f"confirm_delete_{file_id}"] = True
+            st.rerun()
 
 # 페이지 하단 정보
 st.sidebar.markdown("---")
