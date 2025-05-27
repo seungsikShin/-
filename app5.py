@@ -89,7 +89,7 @@ if not os.path.exists(base_folder):
     os.makedirs(base_folder)
 
 # 업로드할 날짜 정보
-upload_date = datetime.datetime.now().strftime("%Y%m%d")
+upload_date = datetime.now().strftime("%Y%m%d")
 today_folder = os.path.join(base_folder, upload_date)
 if not os.path.exists(today_folder):
     os.makedirs(today_folder)
