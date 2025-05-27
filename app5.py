@@ -59,7 +59,7 @@ if "page" not in st.session_state:
     st.session_state["page"] = "질의응답"
 
 # 2) 여기서부터 Streamlit 호출 시작
-today = datetime.datetime.now().strftime("%Y%m%d")
+today = datetime.now().strftime("%Y%m%d")
 # 세션 쿠키 관리 추가
 import uuid
 if "uploader_reset_token" not in st.session_state:
