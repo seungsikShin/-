@@ -135,7 +135,6 @@ def extract_text_from_docx(file_path):
         return f"Word 파일 읽기 실패: {str(e)}"
 
 def extract_text_from_pdf(file_path):
-    """PDF에서 텍스트 추출 (일반 텍스트)"""
     try:
         with open(file_path, 'rb') as file:
             pdf_reader = PyPDF2.PdfReader(file)
@@ -160,11 +159,15 @@ def needs_ocr(pdf_path):
         return True
 
 def ocr_pdf_with_easyocr(pdf_path):
-    """EasyOCR을 사용한 PDF OCR 처리"""
     try:
-        reader = easyocr.Reader(['ko', 'en'])
-        pages = pdf2image.convert_from_path(pdf_path)
-        
+        # GPU 비활성화로 메모리 사용량 줄이기
+        reader = easyocr.Reader(['ko', 'en'], gpu=False)
+        # poppler-utils 체크 및 포맷 지정
+        pages = pdf2image.convert_from_path(
+            pdf_path,
+            poppler_path=None,  # Streamlit Cloud에서는 None
+            fmt='jpeg'
+        )
         extracted_text = ""
         for page_num, page in enumerate(pages):
             try:
@@ -176,11 +179,10 @@ def ocr_pdf_with_easyocr(pdf_path):
             except Exception as e:
                 logger.error(f"OCR 처리 오류 (페이지 {page_num + 1}): {str(e)}")
                 extracted_text += f"[페이지 {page_num + 1}] OCR 처리 실패\n\n"
-        
         return extracted_text.strip()
     except Exception as e:
-        logger.error(f"EasyOCR 처리 오류: {str(e)}")
-        return f"OCR 처리 실패: {str(e)}"
+        logger.error(f"PDF2Image 오류: {str(e)}")
+        return f"PDF 변환 실패: {str(e)}"
 
 def ocr_pdf_with_tesseract(pdf_path):
     """Tesseract를 사용한 PDF OCR 처리 (EasyOCR 대안)"""
@@ -202,62 +204,48 @@ def ocr_pdf_with_tesseract(pdf_path):
         return f"OCR 처리 실패: {str(e)}"
 
 def extract_file_content(file_path):
-    """파일 확장자에 따라 적절한 방법으로 내용 추출"""
     if not os.path.exists(file_path):
         return "파일이 존재하지 않습니다."
-    
     file_ext = os.path.splitext(file_path)[1].lower()
-    
     try:
         if file_ext == '.docx':
             return extract_text_from_docx(file_path)
-        
         elif file_ext == '.pdf':
-            # 먼저 일반 텍스트 추출 시도
             text = extract_text_from_pdf(file_path)
-            
-            # OCR 필요 여부 판단
             if needs_ocr(file_path):
                 logger.info(f"OCR 처리 시작: {file_path}")
                 try:
-                    # EasyOCR 우선 시도
                     ocr_text = ocr_pdf_with_easyocr(file_path)
                     if "OCR 처리 실패" not in ocr_text:
                         return f"[OCR 텍스트]\n{ocr_text}"
                     else:
-                        # EasyOCR 실패시 Tesseract 시도
                         logger.info("EasyOCR 실패, Tesseract 시도")
                         ocr_text = ocr_pdf_with_tesseract(file_path)
                         return f"[OCR 텍스트]\n{ocr_text}"
                 except Exception as e:
                     logger.error(f"OCR 처리 실패: {str(e)}")
                     return f"[일반 텍스트]\n{text}\n\n[OCR 처리 실패]: {str(e)}"
-            
             return f"[일반 텍스트]\n{text}"
-        
         elif file_ext == '.txt':
             with open(file_path, 'r', encoding='utf-8') as f:
                 return f.read()
-        
         elif file_ext in ['.jpg', '.jpeg', '.png', '.tiff', '.bmp']:
-            # 이미지 파일 OCR 처리
             try:
-                reader = easyocr.Reader(['ko', 'en'])
+                reader = easyocr.Reader(['ko', 'en'], gpu=False)
                 result = reader.readtext(file_path)
                 text = ""
                 for detection in result:
                     text += detection[1] + " "
                 return f"[이미지 OCR]\n{text.strip()}"
-            except:
+            except Exception as e:
+                logger.error(f"EasyOCR 실패, Tesseract 시도: {str(e)}")
                 try:
                     text = pytesseract.image_to_string(Image.open(file_path), lang='kor+eng')
                     return f"[이미지 OCR]\n{text.strip()}"
-                except Exception as e:
-                    return f"이미지 OCR 처리 실패: {str(e)}"
-        
+                except Exception as e2:
+                    return f"이미지 OCR 처리 실패: {str(e2)}"
         else:
             return f"지원하지 않는 파일 형식: {file_ext}"
-    
     except Exception as e:
         logger.error(f"파일 처리 오류: {file_path}, {str(e)}")
         return f"파일 읽기 실패: {str(e)}"
