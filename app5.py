@@ -7,8 +7,13 @@ st.set_page_config(
 )
 from dotenv import load_dotenv  
 load_dotenv()
-with open("system_prompt.txt", "r", encoding="utf-8") as f:
-    SYSTEM_PROMPT = f.read().strip()
+# system_prompt.txt 안전하게 읽기
+try:
+    with open("system_prompt.txt", "r", encoding="utf-8") as f:
+        SYSTEM_PROMPT = f.read().strip()
+except FileNotFoundError:
+    SYSTEM_PROMPT = ""
+    logging.warning("system_prompt.txt 파일을 찾을 수 없습니다.")
 # 이제부터 다른 import
 import os
 import gc  # gc 모듈 추가
@@ -284,12 +289,14 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
     """
     try:
         logger.info(f"보고서 생성 시작 - ID: {submission_id}")
-        
+        # ✅ API 키 확인
+        if not openai_api_key or not openai_org_id:
+            logger.error("OpenAI API 키가 설정되지 않았습니다.")
+            return None
         # 입력 정보 검증
         if not submission_id:
             logger.error("submission_id가 없습니다.")
             return None
-        
         # 업로드된 파일들의 실제 내용 추출
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
@@ -299,98 +306,40 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
         )
         file_records = c.fetchall()
         conn.close()
-        
         logger.info(f"파일 레코드 수: {len(file_records)}")
-        
         file_contents = {}
+        success_count = 0
         for file_name, file_path in file_records:
             if os.path.exists(file_path):
                 content = extract_file_content(file_path)
                 if content and not content.startswith("[") and "실패" not in content:
-                    # 내용 길이 제한 (Assistant 토큰 제한 고려)
-                    if len(content) > 5000:
-                        content = content[:5000] + "\n...(내용이 길어서 일부만 표시)"
                     file_contents[file_name] = content
+                    success_count += 1
                     logger.info(f"파일 처리 성공: {file_name}")
                 else:
-                    logger.warning(f"파일 처리 실패: {file_name}")
-        
-        # ✅ Assistant 지침에 맞는 메시지 구성
-        user_message = f"""
-다음 계약 건에 대한 일상감사 보고서 초안을 작성해주세요.
-
-## 감사 유형
-일반 계약 감사
-
-## 감사 개요
-- **사업명/계약명**: {contract_name or '정보 없음'}
-- **계약금액**: {contract_amount or '정보 없음'}
-- **업체명**: 제출 문서에서 확인 필요
-- **계약방식**: 제출 문서에서 확인 필요  
-- **선정기준**: 제출 문서에서 확인 필요
-- **참여업체**: 제출 문서에서 확인 필요
-- **계약기간**: {contract_date or '정보 없음'}부터
-- **주관부서**: {department or '정보 없음'}
-- **담당자**: {manager or '정보 없음'} (연락처: {phone or '정보 없음'})
-
-## 제출된 문서 내용
-"""
-        
-        # 파일 내용 추가
+                    logger.warning(f"파일 내용 추출 실패: {file_name} - {content[:100]}")
+            else:
+                logger.error(f"파일이 존재하지 않음: {file_path}")
+        logger.info(f"성공적으로 처리된 파일 수: {success_count}/{len(file_records)}")
+        # ✅ 메시지 구성 확인
+        user_message = f"""다음 계약 건에 대한 일상감사 보고서 초안을 작성해주세요.\n\n## 감사 유형\n일반 계약 감사\n\n## 감사 개요\n- **사업명/계약명**: {contract_name or '정보 없음'}\n- **계약금액**: {contract_amount or '정보 없음'}\n- **주관부서**: {department or '정보 없음'}\n- **담당자**: {manager or '정보 없음'} (연락처: {phone or '정보 없음'})\n\n## 제출된 문서 내용\n"""
+        # ✅ 수정된 파일 내용 추가
         if file_contents:
             for file_name, content in file_contents.items():
-                user_message += f"""
-### 📄 {file_name}
-{content}
-"""
+                user_message += f"""\n### 📄 {file_name}\n{content}\n\ntext\n"""
         else:
             user_message += "\n**주요 문제**: 계약서, 제안서 평가표, 업체 선정 관련 문서가 제출되지 않았습니다.\n"
-        
-        # 누락된 파일 정보
-        if missing_files_with_reasons:
-            user_message += "\n## 누락된 자료 및 사유\n"
-            for file_name, reason in missing_files_with_reasons:
-                user_message += f"- **{file_name}**: {reason}\n"
-        
-        # Assistant 지침에 따른 구체적 요청
-        user_message += """
-
-## 보고서 작성 요청
-위 정보를 바탕으로 일상감사 양식에 따른 전문적인 보고서 초안을 작성해주세요.
-
-**필수 포함 항목:**
-1. **사업개요**
-2. **업체 선정절차 검토** (절차 적정성, 비교표 유무, 평가 기준 등)
-3. **사업 목적 검토**
-4. **예산 검토** (초과 여부, 승인 문서 유무 등)
-5. **계약서 검토** (서명, 조건, 변경 가능성 등)
-6. **검토의견** (적정/일부 부적정/부적정 중 선택 후 구체적 근거)
-7. **최종 의견 및 개선 권고사항**
-
-**작성 방식:**
-- 각 항목은 "현황 요약 → 규정 근거 → 리스크 분석 → 개선 권고" 순서로 구성
-- 관련 규정 조항을 구체적으로 인용 (예: "계약 규정 제9조", "일상감사 매뉴얼 3.1절")
-- 누락된 문서는 구체적으로 요청
-- 실무자 수준의 전문적 문장으로 작성
-
-상급 감사자에게 제출 가능한 수준의 초안을 작성해주세요.
-"""
-        
-        logger.info(f"Assistant API 호출 - 메시지 길이: {len(user_message)}")
-        
-        # Assistant API 호출
+        user_message += """\n\n## 보고서 작성 요청\n위 정보를 바탕으로 일상감사 양식에 따른 전문적인 보고서 초안을 작성해주세요.\n\n상급 감사자에게 제출 가능한 수준의 초안을 작성해주세요.\n"""
+        logger.info(f"GPT 요청 메시지 길이: {len(user_message)}")
+        # ✅ API 호출 전 상태 확인
         answer, success = get_clean_answer_from_gpts(user_message)
-        
-        if not success:
-            logger.error(f"Assistant API 호출 실패: {answer}")
-            return None
-        
-        # 응답 검증
-        if len(answer) < 500:
-            logger.warning(f"Assistant 응답이 너무 짧습니다: {len(answer)}자")
+        logger.info(f"GPT API 응답 - 성공: {success}")
+        if success:
+            logger.info(f"응답 길이: {len(answer)}자")
         else:
-            logger.info(f"정상적인 Assistant 응답 숵신: {len(answer)}자")
-        
+            logger.error(f"GPT API 실패 - 오류: {answer}")
+            return None
+        # 나머지 Word 문서 생성 코드...
         # 응답 정리 (불필요한 텍스트 제거)
         answer = re.sub(r'\【.*?\】', '', answer)
         
