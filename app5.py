@@ -28,6 +28,7 @@ import shutil
 from typing import List, Dict, Optional, Tuple, Any
 from docx import Document
 import zipfile
+from datetime import datetime
 
 # OCR 관련 라이브러리들 - 에러 방지
 try:
@@ -341,8 +342,6 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
                 user_message += f"""
 ### 📄 {file_name}
 {content}
-
-text
 """
         else:
             user_message += "\n**주요 문제**: 계약서, 제안서 평가표, 업체 선정 관련 문서가 제출되지 않았습니다.\n"
@@ -996,6 +995,37 @@ def send_email(subject, body, to_email, attachments=None) -> Tuple[bool, str]:
         logger.error(error_msg)
         return False, error_msg
 
+def send_email_with_attachments(to_email, subject, body, attachment_paths):
+    """
+    첨부 파일이 있는 이메일을 발송합니다.
+    """
+    try:
+        smtp_server = "smtp.gmail.com"
+        smtp_port = 465
+        msg = MIMEMultipart()
+        msg["From"] = from_email
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        # 본문 추가
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        # 첨부 파일 추가
+        for file_path in attachment_paths:
+            if os.path.exists(file_path):
+                with open(file_path, "rb") as f:
+                    part = MIMEApplication(f.read(), Name=os.path.basename(file_path))
+                part['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_path)}"'
+                msg.attach(part)
+        # 이메일 발송
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context) as server:
+            server.login(from_email, from_password)
+            server.sendmail(from_email, to_email, msg.as_string())
+        logger.info(f"이메일 발송 성공: {subject}")
+        return True
+    except Exception as e:
+        logger.error(f"이메일 발송 오류: {str(e)}")
+        return False
+
 # 데이터베이스 초기화
 init_db()
 
@@ -1336,107 +1366,69 @@ elif st.session_state["page"] == "파일 업로드":
 # 접수 완료 페이지
 elif st.session_state["page"] == "접수 완료":
     st.title("✅ 일상감사 접수 완료")
-
-    # 항상 submission_id 변수 사용
     submission_id = st.session_state["submission_id"]
-    conn = sqlite3.connect('audit_system.db')
-    c = conn.cursor()
-    c.execute("""
-        SELECT department, manager, phone, contract_name, contract_date, contract_amount
-        FROM submissions
-        WHERE submission_id = ?
-    """, (submission_id,))
-    result = c.fetchone()
-    if result:
-        department, manager, phone, contract_name, contract_date, contract_amount = result
-    else:
-        st.error("접수 정보를 찾을 수 없습니다. 파일 업로드 페이지에서 접수 정보를 먼저 입력해주세요.")
-        department, manager, phone, contract_name, contract_date, contract_amount = "", "", "", "", "", ""
-
-    # 접수 내용 요약
-    st.markdown("### 접수 내용 요약")
-
-    # 업로드된 파일 목록
-    uploaded_file_list = []
-    c.execute(
-        "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?",
-        (submission_id,)
-    )
-    uploaded_db_files = c.fetchall()
-
+    try:
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
+        c.execute("""
+            SELECT department, manager, phone, contract_name, contract_date, contract_amount
+            FROM submissions
+            WHERE submission_id = ?
+        """, (submission_id,))
+        result = c.fetchone()
+        if result:
+            department, manager, phone, contract_name, contract_date, contract_amount = result
+        else:
+            st.error("접수 정보를 찾을 수 없습니다.")
+            st.stop()
+        c.execute("SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?", (submission_id,))
+        uploaded_db_files = c.fetchall()
+        c.execute("SELECT file_name, reason FROM missing_file_reasons WHERE submission_id = ?", (submission_id,))
+        missing_db_files = c.fetchall()
+        conn.close()
+    except Exception as e:
+        st.error(f"데이터 조회 오류: {str(e)}")
+        st.stop()
+    st.subheader("📄 접수 정보")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write(f"**접수번호:** {submission_id}")
+        st.write(f"**부서:** {department}")
+        st.write(f"**담당자:** {manager}")
+        st.write(f"**연락처:** {phone}")
+    with col2:
+        st.write(f"**계약명:** {contract_name}")
+        st.write(f"**계약일:** {contract_date}")
+        st.write(f"**계약금액:** {contract_amount}")
     if uploaded_db_files:
-        st.markdown("#### 업로드된 파일")
+        st.subheader("📎 업로드된 파일")
         for file_name, file_path in uploaded_db_files:
-            st.success(f"✅ {file_name}")
-            uploaded_file_list.append(file_path)
-
-    # 누락된 파일 및 사유
-    c.execute(
-        "SELECT file_name, reason FROM missing_file_reasons WHERE submission_id = ?",
-        (submission_id,)
-    )
-    missing_db_files = c.fetchall()
-    
+            if os.path.exists(file_path):
+                st.success(f"✅ {file_name}")
+            else:
+                st.error(f"❌ {file_name} (파일을 찾을 수 없음)")
     if missing_db_files:
-        st.markdown("#### 누락된 파일 및 사유")
+        st.subheader("📝 누락된 파일 및 사유")
         for file_name, reason in missing_db_files:
-            st.info(f"📝 {file_name}: {reason}")
+            st.info(f"• {file_name}: {reason}")
+    body = f"""
+[감사업무접수] 계약 감사 요청
 
-    # DB에서 누락 파일 확인 - 파일 유형으로 검색
-    incomplete_files = []
-    for req_file in required_files:
-        # 업로드 파일 확인
-        c.execute("SELECT COUNT(*) FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
-                  (submission_id, f"%{req_file}%"))
-        file_count = c.fetchone()[0]
-        
-        # 사유 제공 확인
-        c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
-                  (submission_id, req_file))
-        reason_count = c.fetchone()[0]
-        if file_count == 0 and reason_count == 0:
-            incomplete_files.append(req_file)
-    current_missing_files = incomplete_files
+■ 접수 정보
+- 접수번호: {submission_id}
+- 접수부서: {department}
+- 담당자: {manager} ({phone})
+- 계약명: {contract_name}
+- 계약일: {contract_date}
+- 계약금액: {contract_amount}
 
-# 페이지 하단 정보
-st.sidebar.markdown("---")
-st.sidebar.info("""
-© 2025 일상감사 접수 시스템
-문의:  
-    OKH. 감사팀
-    📞 02-2009-6512/ 신승식
-""")
-
-# 보고서 생성 UI 부분 사용자 피드백 간소화
-with st.spinner("감사보고서를 생성하는 중..."):
-    report_path = generate_audit_report_with_gpt(
-        submission_id=submission_id,
-        department=department,
-        manager=manager,
-        phone=phone,
-        contract_name=contract_name,
-        contract_date=contract_date,
-        contract_amount=contract_amount,
-        uploaded_files=[f for f, _ in uploaded_db_files],
-        missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
-    )
-    if report_path and os.path.exists(report_path):
-        st.success("✅ 감사보고서가 생성되었습니다.")
-        with open(report_path, "rb") as f:
-            st.download_button(
-                label="📄 보고서 다운로드",
-                data=f.read(),
-                file_name=f"감사보고서_{submission_id}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
-    else:
-        st.error("❌ 보고서 생성에 실패했습니다. 관리자에게 문의하세요.")
-
-def show_completion_page():
-    # ... 기존 코드 ...
-    # (DB에서 정보 불러오기, 파일 목록 등)
-    # ...
-    # 보고서 생성 (간소화)
+■ 첨부 파일
+"""
+    email_attachments = []
+    for file_name, file_path in uploaded_db_files:
+        if os.path.exists(file_path):
+            email_attachments.append(file_path)
+            body += f"* {file_name}\n"
     with st.spinner("감사보고서를 생성하는 중..."):
         report_path = generate_audit_report_with_gpt(
             submission_id=submission_id,
@@ -1449,17 +1441,31 @@ def show_completion_page():
             uploaded_files=[f for f, _ in uploaded_db_files],
             missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
         )
-        if report_path:
+        if report_path and os.path.exists(report_path):
             email_attachments.append(report_path)
+            body += f"* GPT 감사보고서 초안 ({os.path.basename(report_path)})\n"
             st.success("✅ 감사보고서가 생성되었습니다.")
+            with open(report_path, "rb") as f:
+                st.download_button(
+                    label="📄 보고서 다운로드",
+                    data=f.read(),
+                    file_name=f"감사보고서_{submission_id}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
         else:
             st.warning("⚠️ 감사보고서 생성에 실패했지만 접수는 완료되었습니다.")
-    # 이메일 전송
+    body += f"\n접수 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
     if st.button("📧 이메일 전송", type="primary"):
         with st.spinner("이메일을 전송하는 중..."):
-            success = send_email_with_attachments(...)
+            success = send_email_with_attachments(
+                to_email=to_email,
+                subject=f"[감사업무접수] {contract_name} - {submission_id}",
+                body=body,
+                attachment_paths=email_attachments
+            )
             if success:
-                st.success("✅ 접수가 완료되었습니다!")
+                update_submission_status(submission_id, "접수완료", 1)
+                st.success("✅ 이메일이 성공적으로 전송되었습니다!")
                 st.balloons()
             else:
                 st.error("❌ 이메일 전송에 실패했습니다.")
