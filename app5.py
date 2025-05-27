@@ -31,32 +31,25 @@ import zipfile
 
 # OCR 관련 라이브러리들 - 에러 방지
 try:
-    import PyPDF2
+    from pypdf import PdfReader  # 또는 PyPDF2
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
     st.warning("PDF 처리 기능이 제한됩니다.")
 
 try:
-    import pytesseract
-    from PIL import Image
-    TESSERACT_AVAILABLE = True
+    from pptx import Presentation
+    PPTX_AVAILABLE = True
 except ImportError:
-    TESSERACT_AVAILABLE = False
+    PPTX_AVAILABLE = False
+    st.warning("PowerPoint 처리 기능이 제한됩니다.")
 
 try:
-    import pdf2image
-    PDF2IMAGE_AVAILABLE = True
+    import openpyxl
+    EXCEL_AVAILABLE = True
 except ImportError:
-    PDF2IMAGE_AVAILABLE = False
-
-try:
-    import easyocr
-    import numpy as np
-    EASYOCR_AVAILABLE = True
-except ImportError:
-    EASYOCR_AVAILABLE = False
-    st.info("EasyOCR을 사용할 수 없습니다. Tesseract만 사용됩니다.")
+    EXCEL_AVAILABLE = False
+    st.warning("Excel 처리 기능이 제한됩니다.")
 
 import subprocess
 
@@ -146,100 +139,112 @@ st.session_state["last_session_time"] = current_time
 
 # --- (2) 파일 내용 추출 함수들 ---
 def extract_text_from_docx(file_path):
-    """Word 문서에서 텍스트 추출"""
     try:
         doc = Document(file_path)
         full_text = []
+        
+        # 문단 텍스트 추출
         for paragraph in doc.paragraphs:
             if paragraph.text.strip():
                 full_text.append(paragraph.text.strip())
+        
+        # 표 내용 추출
+        for table in doc.tables:
+            for row in table.rows:
+                row_text = []
+                for cell in row.cells:
+                    if cell.text.strip():
+                        row_text.append(cell.text.strip())
+                if row_text:
+                    full_text.append(" | ".join(row_text))
+        
         return '\n'.join(full_text)
     except Exception as e:
         logger.error(f"Word 파일 읽기 오류: {str(e)}")
         return f"Word 파일 읽기 실패: {str(e)}"
 
 def extract_text_from_pdf(file_path):
-    """PDF에서 텍스트 추출 (일반 텍스트)"""
+    """PDF에서 텍스트 추출 (OCR 없이)"""
     if not PDF_AVAILABLE:
         return "PDF 처리 라이브러리가 설치되지 않았습니다."
     
     try:
-        with open(file_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
+        reader = PdfReader(file_path)
+        text = ""
+        for page_num, page in enumerate(reader.pages, 1):
+            page_text = page.extract_text()
+            if page_text and page_text.strip():
+                text += f"[페이지 {page_num}]\n{page_text}\n\n"
+        
+        if len(text.strip()) < 50:
+            return "[PDF 텍스트 추출 제한] 스캔된 이미지 PDF이거나 텍스트가 없습니다. 텍스트가 포함된 PDF를 업로드해주세요."
+        
         return text.strip()
     except Exception as e:
         logger.error(f"PDF 텍스트 추출 오류: {str(e)}")
         return f"PDF 텍스트 추출 실패: {str(e)}"
 
-def needs_ocr(pdf_path):
-    """PDF가 OCR이 필요한지 판단"""
-    try:
-        text = extract_text_from_pdf(pdf_path)
-        # 의미있는 텍스트가 적으면 OCR 필요
-        meaningful_text = re.sub(r'\s+', '', text)
-        if len(meaningful_text) < 100:  # 100자 미만이면 OCR 필요로 판단
-            return True
-        return False
-    except:
-        return True
-
-def ocr_pdf_with_easyocr(pdf_path):
-    """EasyOCR을 사용한 PDF OCR 처리"""
-    if not EASYOCR_AVAILABLE or not PDF2IMAGE_AVAILABLE:
-        return "EasyOCR 또는 PDF2Image가 설치되지 않았습니다."
+def extract_text_from_powerpoint(file_path):
+    """PowerPoint에서 텍스트 추출"""
+    if not PPTX_AVAILABLE:
+        return "PowerPoint 처리 라이브러리가 설치되지 않았습니다."
     
     try:
-        reader = easyocr.Reader(['ko', 'en'], gpu=False)
-        pages = pdf2image.convert_from_path(
-            pdf_path,
-            poppler_path=None,
-            fmt='jpeg'
-        )
+        prs = Presentation(file_path)
+        text = ""
         
-        extracted_text = ""
-        for page_num, page in enumerate(pages):
-            try:
-                result = reader.readtext(np.array(page))
-                page_text = ""
-                for detection in result:
-                    page_text += detection[1] + " "
-                extracted_text += f"[페이지 {page_num + 1}]\n{page_text.strip()}\n\n"
-            except Exception as e:
-                logger.error(f"OCR 처리 오류 (페이지 {page_num + 1}): {str(e)}")
-                extracted_text += f"[페이지 {page_num + 1}] OCR 처리 실패\n\n"
+        for slide_num, slide in enumerate(prs.slides, 1):
+            text += f"\n=== 슬라이드 {slide_num} ===\n"
+            
+            # 슬라이드의 모든 텍스트 추출
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text.strip():
+                    text += shape.text.strip() + "\n"
+                
+                # 표 내용 추출
+                if hasattr(shape, "has_table") and shape.has_table:
+                    table = shape.table
+                    for row in table.rows:
+                        row_text = []
+                        for cell in row.cells:
+                            if cell.text.strip():
+                                row_text.append(cell.text.strip())
+                        if row_text:
+                            text += " | ".join(row_text) + "\n"
         
-        return extracted_text.strip()
+        return text.strip()
     except Exception as e:
-        logger.error(f"EasyOCR 처리 오류: {str(e)}")
-        return f"EasyOCR 처리 실패: {str(e)}"
+        logger.error(f"PowerPoint 텍스트 추출 오류: {str(e)}")
+        return f"PowerPoint 텍스트 추출 실패: {str(e)}"
 
-def ocr_pdf_with_tesseract(pdf_path):
-    """Tesseract를 사용한 PDF OCR 처리"""
-    if not TESSERACT_AVAILABLE or not PDF2IMAGE_AVAILABLE:
-        return "Tesseract 또는 PDF2Image가 설치되지 않았습니다."
+def extract_text_from_excel(file_path):
+    """Excel에서 텍스트 추출"""
+    if not EXCEL_AVAILABLE:
+        return "Excel 처리 라이브러리가 설치되지 않았습니다."
     
     try:
-        pages = pdf2image.convert_from_path(pdf_path)
-        extracted_text = ""
+        workbook = openpyxl.load_workbook(file_path, data_only=True)
+        text = ""
         
-        for page_num, page in enumerate(pages):
-            try:
-                text = pytesseract.image_to_string(page, lang='kor+eng')
-                extracted_text += f"[페이지 {page_num + 1}]\n{text.strip()}\n\n"
-            except Exception as e:
-                logger.error(f"Tesseract OCR 오류 (페이지 {page_num + 1}): {str(e)}")
-                extracted_text += f"[페이지 {page_num + 1}] OCR 처리 실패\n\n"
+        for sheet_name in workbook.sheetnames:
+            sheet = workbook[sheet_name]
+            text += f"\n=== {sheet_name} 시트 ===\n"
+            
+            for row in sheet.iter_rows(values_only=True):
+                row_text = []
+                for cell in row:
+                    if cell is not None and str(cell).strip():
+                        row_text.append(str(cell).strip())
+                if row_text:
+                    text += " | ".join(row_text) + "\n"
         
-        return extracted_text.strip()
+        return text.strip()
     except Exception as e:
-        logger.error(f"Tesseract 처리 오류: {str(e)}")
-        return f"OCR 처리 실패: {str(e)}"
+        logger.error(f"Excel 텍스트 추출 오류: {str(e)}")
+        return f"Excel 텍스트 추출 실패: {str(e)}"
 
 def extract_file_content(file_path):
-    """파일 확장자에 따라 적절한 방법으로 내용 추출"""
+    """파일 확장자에 따라 적절한 방법으로 내용 추출 (OCR 제외)"""
     if not os.path.exists(file_path):
         return "파일이 존재하지 않습니다."
     
@@ -250,62 +255,20 @@ def extract_file_content(file_path):
             return extract_text_from_docx(file_path)
         
         elif file_ext == '.pdf':
-            if not PDF_AVAILABLE:
-                return "PDF 처리 기능을 사용할 수 없습니다."
-            
-            # 먼저 일반 텍스트 추출 시도
-            text = extract_text_from_pdf(file_path)
-            
-            # OCR 필요 여부 판단
-            if needs_ocr(file_path) and (EASYOCR_AVAILABLE or TESSERACT_AVAILABLE):
-                logger.info(f"OCR 처리 시작: {file_path}")
-                try:
-                    # EasyOCR 우선 시도
-                    if EASYOCR_AVAILABLE:
-                        ocr_text = ocr_pdf_with_easyocr(file_path)
-                        if "처리 실패" not in ocr_text:
-                            return f"[OCR 텍스트]\n{ocr_text}"
-                    
-                    # EasyOCR 실패시 또는 없으면 Tesseract 시도
-                    if TESSERACT_AVAILABLE:
-                        logger.info("Tesseract OCR 시도")
-                        ocr_text = ocr_pdf_with_tesseract(file_path)
-                        return f"[OCR 텍스트]\n{ocr_text}"
-                    
-                except Exception as e:
-                    logger.error(f"OCR 처리 실패: {str(e)}")
-                    return f"[일반 텍스트]\n{text}\n\n[OCR 처리 실패]: {str(e)}"
-            
-            return f"[일반 텍스트]\n{text}"
+            return extract_text_from_pdf(file_path)
+        
+        elif file_ext in ['.pptx', '.ppt']:
+            return extract_text_from_powerpoint(file_path)
+        
+        elif file_ext in ['.xlsx', '.xls']:
+            return extract_text_from_excel(file_path)
         
         elif file_ext == '.txt':
             with open(file_path, 'r', encoding='utf-8') as f:
                 return f.read()
         
-        elif file_ext in ['.jpg', '.jpeg', '.png', '.tiff', '.bmp']:
-            # 이미지 파일 OCR 처리
-            if EASYOCR_AVAILABLE:
-                try:
-                    reader = easyocr.Reader(['ko', 'en'], gpu=False)
-                    result = reader.readtext(file_path)
-                    text = ""
-                    for detection in result:
-                        text += detection[1] + " "
-                    return f"[이미지 OCR]\n{text.strip()}"
-                except Exception as e:
-                    logger.error(f"EasyOCR 실패: {str(e)}")
-            
-            if TESSERACT_AVAILABLE:
-                try:
-                    text = pytesseract.image_to_string(Image.open(file_path), lang='kor+eng')
-                    return f"[이미지 OCR]\n{text.strip()}"
-                except Exception as e:
-                    return f"이미지 OCR 처리 실패: {str(e)}"
-            
-            return "OCR 라이브러리가 설치되지 않았습니다."
-        
         else:
-            return f"지원하지 않는 파일 형식: {file_ext}"
+            return f"지원하지 않는 파일 형식: {file_ext}\n지원 형식: PDF, Word(.docx), PowerPoint(.pptx), Excel(.xlsx), 텍스트(.txt)"
     
     except Exception as e:
         logger.error(f"파일 처리 오류: {file_path}, {str(e)}")
@@ -331,27 +294,33 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
         
         file_contents = {}
         total_content_length = 0
-        max_content_per_file = 3000  # 파일당 최대 토큰 제한
+        max_content_per_file = 4000  # 파일당 최대 토큰 제한 증가
         
         for file_name, file_path in file_records:
             logger.info(f"파일 내용 추출 시작: {file_name}")
             content = extract_file_content(file_path)
             
+            # 오류 메시지인 경우 스킵
+            if content.startswith("[") or "실패" in content or "제한" in content:
+                logger.warning(f"파일 처리 문제: {file_name} - {content[:100]}")
+                file_contents[file_name] = f"[파일 처리 문제] {content[:200]}"
+                continue
+            
             # 내용이 너무 길면 잘라서 사용
             if len(content) > max_content_per_file:
-                content = content[:max_content_per_file] + "\n...(내용 생략)"
+                content = content[:max_content_per_file] + "\n...(내용이 길어서 일부만 표시)"
             
             file_contents[file_name] = content
             total_content_length += len(content)
             
             # 전체 내용이 너무 길어지면 중단
-            if total_content_length > 10000:  # 전체 10,000자 제한
+            if total_content_length > 15000:  # 전체 15,000자 제한
                 logger.warning("파일 내용이 너무 길어서 일부만 분석합니다.")
                 break
         
         # 2. GPT에 전송할 메시지 구성
         user_message = f"""
-다음 정보와 실제 문서 내용을 기반으로, A4 3장 분량의 상세하고 전문적인 일상감사 보고서 초안을 작성해주세요.
+다음 정보와 실제 문서 내용을 기반으로, 전문적인 일상감사 보고서 초안을 작성해주세요.
 
 ## 계약 기본 정보
 - 접수 ID: {submission_id}
@@ -361,12 +330,12 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
 - 계약 체결일: {contract_date}
 - 계약금액: {contract_amount}
 
-## 실제 제출 문서 내용 분석
+## 제출 문서 내용 분석
 """
         
         # 파일 내용 추가
         for file_name, content in file_contents.items():
-            user_message += f"\n### 📄 {file_name}\n``````\n"
+            user_message += f"\n### 📄 {file_name}\n``````\n{content}\n``````\n"
         
         # 누락된 파일 정보 추가
         if missing_files_with_reasons:
@@ -377,17 +346,17 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
             user_message += "\n## 누락된 자료 및 사유\n없음\n"
         
         user_message += """
-## 감사보고서 작성 지침
-1. 위의 실제 문서 내용을 철저히 분석하여 구체적인 검토 의견을 제시하세요.
-2. 표준 감사보고서 형식으로 작성하세요:
-   - 검토 개요
-   - 주요 검토 내용
-   - 발견 사항 및 문제점
-   - 개선 권고 사항
-3. 문서에서 발견된 구체적인 내용을 인용하여 근거를 제시하세요.
-4. 계약의 적정성, 절차 준수성, 예산 사용의 타당성을 중점적으로 분석하세요.
-5. 전문 용어는 쉽게 풀어서 설명하세요.
-6. 각 항목별로 3~5문장으로 구체적으로 작성하세요.
+
+## 감사보고서 작성 요청
+위의 실제 문서 내용을 분석하여 다음 형식으로 감사보고서를 작성해주세요:
+
+1. **검토 개요**: 접수된 계약의 전반적인 개요
+2. **주요 검토 내용**: 제출된 문서들의 핵심 내용 분석
+3. **발견 사항**: 문서에서 발견된 주요 사항들
+4. **개선 권고 사항**: 감사 관점에서의 권고사항
+5. **결론**: 종합적인 검토 의견
+
+각 섹션별로 구체적이고 전문적으로 작성해주세요.
 """
         
         logger.info(f"GPT 요청 메시지 길이: {len(user_message)} 문자")
@@ -744,7 +713,7 @@ def update_submission_status(submission_id, status, email_sent=1) -> bool:
 def get_clean_answer_from_gpts(question: str) -> Tuple[str, bool]:
     """
     Assistant GPTs API v2 기반으로 system/user 메시지 전송,
-    file_search 도구와 파라미터(model, max_tokens, temperature, top_p) 지정
+    file_search 도구와 파라미터 지정
     """
     try:
         import time
@@ -778,35 +747,49 @@ def get_clean_answer_from_gpts(question: str) -> Tuple[str, bool]:
         if resp.status_code != 200:
             return f"[사용자 메시지 전송 실패] {resp.text}", False
 
-        # 4) run 요청 (tool_choice, parameters 지정)
+        # 4) ✅ 올바른 run 요청 형식
         run_payload = {
             "assistant_id": assistant_id,
-            "tool_choice": "file_search",    # 벡터 스토어 자동 검색
-            "parameters": {
-                "model": "gpt-4o",          # GPT-4o
-                "max_tokens": 1500,         # A4 3장 분량 토큰 상한
-                "temperature": 1.0,         # 온도
-                "top_p": 1.0                # Top-p
-            }
+            "max_tokens": 2000,        # Run 레벨에서 설정
+            "temperature": 0.7,        # 일관성을 위해 조정
+            "top_p": 1.0
         }
+        
         run_resp = requests.post(run_url, headers=headers, json=run_payload)
         if run_resp.status_code != 200:
             return f"[실행 요청 실패] {run_resp.text}", False
         run_id = run_resp.json()["id"]
 
         # 5) 완료 대기
-        while True:
-            status = requests.get(f"{run_url}/{run_id}", headers=headers).json()["status"]
-            if status=="completed": break
-            if status=="failed": return "[실행 중 실패] GPT 실행 실패", False
+        max_wait_time = 60  # 최대 60초 대기
+        wait_time = 0
+        while wait_time < max_wait_time:
+            status_resp = requests.get(f"{run_url}/{run_id}", headers=headers)
+            if status_resp.status_code != 200:
+                return f"[상태 확인 실패] {status_resp.text}", False
+                
+            status = status_resp.json()["status"]
+            if status == "completed": 
+                break
+            elif status in ["failed", "cancelled", "expired"]:
+                return f"[실행 실패] 상태: {status}", False
+            
             time.sleep(1.5)
+            wait_time += 1.5
+
+        if wait_time >= max_wait_time:
+            return "[타임아웃] 응답 생성이 너무 오래 걸립니다.", False
 
         # 6) 최종 assistant 응답 추출
-        msgs = requests.get(msg_url, headers=headers).json()["data"]
+        msgs_resp = requests.get(msg_url, headers=headers)
+        if msgs_resp.status_code != 200:
+            return f"[메시지 조회 실패] {msgs_resp.text}", False
+            
+        msgs = msgs_resp.json()["data"]
         for msg in reversed(msgs):
-            if msg.get("role")=="assistant":
+            if msg.get("role") == "assistant":
                 for c in msg.get("content", []):
-                    if c.get("type")=="text":
+                    if c.get("type") == "text":
                         return c["text"]["value"].strip(), True
 
         return "[응답 없음] assistant 메시지를 찾을 수 없습니다.", False
@@ -1223,6 +1206,20 @@ elif st.session_state["page"] == "파일 업로드":
                                 uploaded_file.size
                             )
                             st.success(f"✅ 업로드 완료")
+                            
+                            # 실시간 파일 내용 분석
+                            with st.expander(f"📄 {uploaded_file.name} 내용 미리보기", expanded=False):
+                                with st.spinner("파일 내용을 추출하는 중..."):
+                                    extracted_content = extract_file_content(file_path)
+                                    if len(extracted_content) > 1000:
+                                        st.text_area(
+                                            "추출된 텍스트", 
+                                            extracted_content[:1000] + "\n...(내용이 길어서 일부만 표시)", 
+                                            height=200
+                                        )
+                                    else:
+                                        st.text_area("추출된 텍스트", extracted_content, height=200)
+                        
                             uploaded_count += 1
                             del uploaded_file
                             gc.collect()
