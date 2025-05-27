@@ -1405,16 +1405,28 @@ elif st.session_state["page"] == "접수 완료":
     contract_date = contract_date or "정보 없음"
     contract_amount = contract_amount or "정보 없음"
     st.subheader("📄 접수 정보")
-    col1, col2 = st.columns(2)
-    with col1:
+    # ✅ st.columns를 안전하게 사용
+    try:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**접수번호:** {submission_id}")
+            st.write(f"**부서:** {department}")
+            st.write(f"**담당자:** {manager}")
+            st.write(f"**연락처:** {phone}")
+        with col2:
+            st.write(f"**계약명:** {contract_name}")
+            st.write(f"**계약일:** {contract_date}")
+            st.write(f"**계약금액:** {contract_amount}")
+    except Exception as e:
+        # st.columns 실패 시 단일 컬럼으로 표시
         st.write(f"**접수번호:** {submission_id}")
         st.write(f"**부서:** {department}")
         st.write(f"**담당자:** {manager}")
         st.write(f"**연락처:** {phone}")
-    with col2:
         st.write(f"**계약명:** {contract_name}")
         st.write(f"**계약일:** {contract_date}")
         st.write(f"**계약금액:** {contract_amount}")
+        logger.error(f"st.columns 오류: {str(e)}")
     if uploaded_db_files:
         st.subheader("📎 업로드된 파일")
         for file_name, file_path in uploaded_db_files:
