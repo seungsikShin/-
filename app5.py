@@ -278,177 +278,187 @@ def extract_file_content(file_path):
 def generate_audit_report_with_gpt(submission_id, department, manager, phone,
                                    contract_name, contract_date, contract_amount,
                                    uploaded_files, missing_files_with_reasons) -> Optional[str]:
+    """
+    Assistant의 System instructions에 맞는 감사보고서 생성
+    """
     try:
-        # ✅ 핵심 정보만 로깅
         logger.info(f"보고서 생성 시작 - ID: {submission_id}")
         
-        # 입력 정보 검증 강화
+        # 입력 정보 검증
         if not submission_id:
             logger.error("submission_id가 없습니다.")
             return None
-            
-        if not all([department, manager, contract_name]):
-            logger.warning("일부 필수 정보가 누락되었지만 보고서 생성을 계속합니다.")
         
-        # 데이터베이스 연결 확인
-        try:
-            conn = sqlite3.connect('audit_system.db')
-            c = conn.cursor()
-            c.execute("SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?", (submission_id,))
-            file_records = c.fetchall()
-            conn.close()
-        except Exception as db_error:
-            logger.error(f"데이터베이스 연결 오류: {str(db_error)}")
-            return None
+        # 업로드된 파일들의 실제 내용 추출
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
+        c.execute(
+            "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?",
+            (submission_id,)
+        )
+        file_records = c.fetchall()
+        conn.close()
+        
+        logger.info(f"파일 레코드 수: {len(file_records)}")
         
         file_contents = {}
-        
-        # 파일이 없어도 기본 보고서는 생성하도록 수정
         for file_name, file_path in file_records:
-            logger.info(f"파일 처리 시작: {file_name}")
-            
-            if not os.path.exists(file_path):
-                logger.warning(f"파일 없음: {file_path}")
-                file_contents[file_name] = "[파일을 찾을 수 없습니다]"
-                continue
-                
-            try:
+            if os.path.exists(file_path):
                 content = extract_file_content(file_path)
-                
                 if content and not content.startswith("[") and "실패" not in content:
-                    # 내용 길이 제한
-                    if len(content) > 4000:
-                        content = content[:4000] + "\n...(내용이 길어서 일부만 표시)"
+                    # 내용 길이 제한 (Assistant 토큰 제한 고려)
+                    if len(content) > 5000:
+                        content = content[:5000] + "\n...(내용이 길어서 일부만 표시)"
                     file_contents[file_name] = content
+                    logger.info(f"파일 처리 성공: {file_name}")
                 else:
-                    file_contents[file_name] = f"[처리 실패] {content[:200] if content else '내용 없음'}"
-                    
-            except Exception as file_error:
-                logger.error(f"파일 처리 오류 {file_name}: {str(file_error)}")
-                file_contents[file_name] = f"[파일 처리 오류] {str(file_error)}"
-
-        # GPT 메시지 구성
+                    logger.warning(f"파일 처리 실패: {file_name}")
+        
+        # ✅ Assistant 지침에 맞는 메시지 구성
         user_message = f"""
-다음 정보를 기반으로 일상감사 보고서 초안을 작성해주세요.
+다음 계약 건에 대한 일상감사 보고서 초안을 작성해주세요.
 
-## 기본 정보
-- 접수 ID: {submission_id}
-- 부서: {department or '정보 없음'}
-- 담당자: {manager or '정보 없음'}
-- 연락처: {phone or '정보 없음'}
-- 계약명: {contract_name or '정보 없음'}
-- 계약일: {contract_date or '정보 없음'}
-- 계약금액: {contract_amount or '정보 없음'}
+## 감사 유형
+일반 계약 감사
 
-## 제출 문서 내용
+## 감사 개요
+- **사업명/계약명**: {contract_name or '정보 없음'}
+- **계약금액**: {contract_amount or '정보 없음'}
+- **업체명**: 제출 문서에서 확인 필요
+- **계약방식**: 제출 문서에서 확인 필요  
+- **선정기준**: 제출 문서에서 확인 필요
+- **참여업체**: 제출 문서에서 확인 필요
+- **계약기간**: {contract_date or '정보 없음'}부터
+- **주관부서**: {department or '정보 없음'}
+- **담당자**: {manager or '정보 없음'} (연락처: {phone or '정보 없음'})
+
+## 제출된 문서 내용
 """
         
+        # 파일 내용 추가
         if file_contents:
             for file_name, content in file_contents.items():
-                user_message += f"\n### 📄 {file_name}\n``````\n{content}\n``````\n"
+                user_message += f"""
+### 📄 {file_name}
+{content}
+
+text
+"""
         else:
-            user_message += "\n제출된 파일이 없거나 텍스트 추출에 실패했습니다.\n"
+            user_message += "\n**주요 문제**: 계약서, 제안서 평가표, 업체 선정 관련 문서가 제출되지 않았습니다.\n"
         
-        # 누락 파일 정보
+        # 누락된 파일 정보
         if missing_files_with_reasons:
-            user_message += "\n## 누락 파일 및 사유\n"
+            user_message += "\n## 누락된 자료 및 사유\n"
             for file_name, reason in missing_files_with_reasons:
-                user_message += f"- {file_name}: {reason}\n"
+                user_message += f"- **{file_name}**: {reason}\n"
         
+        # Assistant 지침에 따른 구체적 요청
         user_message += """
 
 ## 보고서 작성 요청
-위 정보를 바탕으로 다음 구조로 감사보고서를 작성해주세요:
+위 정보를 바탕으로 일상감사 양식에 따른 전문적인 보고서 초안을 작성해주세요.
 
-1. **개요**: 계약 기본 정보 요약
-2. **검토 내용**: 제출 문서 분석
-3. **발견 사항**: 주요 검토 포인트
-4. **권고 사항**: 개선 방안
-5. **결론**: 종합 의견
+**필수 포함 항목:**
+1. **사업개요**
+2. **업체 선정절차 검토** (절차 적정성, 비교표 유무, 평가 기준 등)
+3. **사업 목적 검토**
+4. **예산 검토** (초과 여부, 승인 문서 유무 등)
+5. **계약서 검토** (서명, 조건, 변경 가능성 등)
+6. **검토의견** (적정/일부 부적정/부적정 중 선택 후 구체적 근거)
+7. **최종 의견 및 개선 권고사항**
 
-파일이 없는 경우에도 제공된 기본 정보를 바탕으로 보고서를 작성해주세요.
+**작성 방식:**
+- 각 항목은 "현황 요약 → 규정 근거 → 리스크 분석 → 개선 권고" 순서로 구성
+- 관련 규정 조항을 구체적으로 인용 (예: "계약 규정 제9조", "일상감사 매뉴얼 3.1절")
+- 누락된 문서는 구체적으로 요청
+- 실무자 수준의 전문적 문장으로 작성
+
+상급 감사자에게 제출 가능한 수준의 초안을 작성해주세요.
 """
         
-        # GPT API 호출
-        try:
-            answer, success = get_clean_answer_from_gpts(user_message)
-            if not success:
-                # 기본 보고서라도 생성
-                answer = f"""
-# 일상감사 보고서 (기본)
-
-## 개요
-- 접수 ID: {submission_id}
-- 계약명: {contract_name or '정보 없음'}
-- 담당자: {manager or '정보 없음'}
-
-## 검토 내용
-GPT 분석이 실패하여 기본 양식으로 생성되었습니다.
-제출된 파일을 수동으로 검토해주세요.
-
-## 권고 사항
-- 제출 문서의 완전성 확인 필요
-- 계약 조건 세부 검토 필요
-
-## 결론
-추가 검토가 필요합니다.
-"""
-        except Exception as gpt_error:
-            logger.error(f"GPT 호출 중 예외: {str(gpt_error)}")
+        logger.info(f"Assistant API 호출 - 메시지 길이: {len(user_message)}")
+        
+        # Assistant API 호출
+        answer, success = get_clean_answer_from_gpts(user_message)
+        
+        if not success:
+            logger.error(f"Assistant API 호출 실패: {answer}")
             return None
-
+        
+        # 응답 검증
+        if len(answer) < 500:
+            logger.warning(f"Assistant 응답이 너무 짧습니다: {len(answer)}자")
+        else:
+            logger.info(f"정상적인 Assistant 응답 숵신: {len(answer)}자")
+        
+        # 응답 정리 (불필요한 텍스트 제거)
+        answer = re.sub(r'\【.*?\】', '', answer)
+        
         # Word 문서 생성
         document = Document()
-        document.add_heading('일상감사 보고서 (문서 내용 분석 기반)', level=0)
+        document.add_heading('일상감사 보고서 초안', level=0)
         
-        # 기본 정보 섹션 추가
+        # 접수 정보 표
         document.add_heading('접수 정보', level=1)
-        info_table = document.add_table(rows=6, cols=2)
+        info_table = document.add_table(rows=7, cols=2)
         info_table.style = 'Table Grid'
         
         info_data = [
-            ['접수 ID', submission_id],
-            ['접수 부서', department or '정보 없음'],
+            ['접수번호', submission_id],
+            ['사업명/계약명', contract_name or '정보 없음'],
+            ['주관부서', department or '정보 없음'],
             ['담당자', f"{manager or '정보 없음'} ({phone or '정보 없음'})"],
-            ['계약명', contract_name or '정보 없음'],
+            ['계약금액', contract_amount or '정보 없음'],
             ['계약일', contract_date or '정보 없음'],
-            ['계약금액', contract_amount or '정보 없음']
+            ['보고서 생성일', datetime.now().strftime('%Y-%m-%d %H:%M')]
         ]
         
         for i, (label, value) in enumerate(info_data):
             info_table.cell(i, 0).text = label
-            info_table.cell(i, 1).text = value
+            info_table.cell(i, 1).text = str(value)
         
-        document.add_paragraph()  # 빈 줄 추가
+        document.add_page_break()
         
-        # GPT 응답 내용 추가
-        for line in answer.splitlines():
-            if line.startswith("## "):
-                document.add_heading(line[3:].strip(), level=1)
-            elif line.startswith("### "):
-                document.add_heading(line[4:].strip(), level=2)
-            elif line.startswith("- "):
+        # Assistant 응답 내용을 구조화하여 추가
+        lines = answer.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line.startswith('■') or line.startswith('##'):
+                # 대제목 처리
+                heading_text = line.replace('■', '').replace('##', '').strip()
+                document.add_heading(heading_text, level=1)
+            elif line.startswith('###'):
+                # 소제목 처리
+                heading_text = line.replace('###', '').strip()
+                document.add_heading(heading_text, level=2)
+            elif line.startswith('→') or line.startswith('- '):
+                # 권고사항 리스트
                 p = document.add_paragraph(style='List Bullet')
-                p.add_run(line[2:].strip())
-            elif line.strip():
-                document.add_paragraph(line.strip())
+                p.add_run(line.replace('→', '').replace('- ', '').strip())
+            elif line.startswith('**') and line.endswith('**'):
+                # 강조 텍스트
+                p = document.add_paragraph()
+                p.add_run(line.replace('**', '')).bold = True
+            elif line and not line.startswith('```'):
+                # 일반 텍스트
+                if line:
+                    document.add_paragraph(line)
         
         # 파일 저장
         reports_folder = os.path.join(base_folder, "draft_reports")
         os.makedirs(reports_folder, exist_ok=True)
-        file_path = os.path.join(reports_folder, f"감사보고서초안_{submission_id}.docx")
+        file_path = os.path.join(reports_folder, f"일상감사보고서_{submission_id}.docx")
         
         document.save(file_path)
+        logger.info(f"감사보고서 생성 완료: {file_path}")
         
-        if os.path.exists(file_path):
-            logger.info(f"보고서 생성 완료: {submission_id}")
-            return file_path
-        else:
-            logger.error(f"보고서 생성 실패: {submission_id}")
-            return None
+        return file_path if os.path.exists(file_path) else None
         
     except Exception as e:
-        logger.error(f"보고서 생성 오류 {submission_id}: {str(e)}")
+        logger.error(f"감사보고서 생성 오류: {str(e)}")
+        import traceback
+        logger.error(f"상세 오류: {traceback.format_exc()}")
         return None
 
 # OpenAI API 정보 (하드코딩)
@@ -744,14 +754,11 @@ def update_submission_status(submission_id, status, email_sent=1) -> bool:
 # OpenAI API를 사용하여 질문에 답변하는 함수
 def get_clean_answer_from_gpts(question: str) -> Tuple[str, bool]:
     """
-    Assistant GPTs API v2 기반으로 system/user 메시지 전송,
-    file_search 도구와 파라미터 지정
+    Assistant API v2를 통한 GPT 호출 (시스템 메시지 제거)
     """
     try:
-        import time
-
         assistant_id = "asst_oTip4nhZNJHinYxehJ7itwG9"
-        thread_url   = "https://api.openai.com/v1/threads"
+        thread_url = "https://api.openai.com/v1/threads"
         headers = {
             "Authorization": f"Bearer {openai_api_key}",
             "OpenAI-Organization": openai_org_id,
@@ -762,54 +769,63 @@ def get_clean_answer_from_gpts(question: str) -> Tuple[str, bool]:
         # 1) 새 스레드 생성
         thread_resp = requests.post(thread_url, headers=headers)
         if thread_resp.status_code != 200:
+            logger.error(f"스레드 생성 실패: {thread_resp.text}")
             return f"[스레드 생성 실패] {thread_resp.text}", False
+        
         thread_id = thread_resp.json()["id"]
-        msg_url   = f"{thread_url}/{thread_id}/messages"
-        run_url   = f"{thread_url}/{thread_id}/runs"
+        msg_url = f"{thread_url}/{thread_id}/messages"
+        run_url = f"{thread_url}/{thread_id}/runs"
 
-        # 2) system 메시지
-        sys_msg = {"role":"system", "content": SYSTEM_PROMPT}
-        resp = requests.post(msg_url, headers=headers, json=sys_msg)
-        if resp.status_code != 200:
-            return f"[시스템 메시지 전송 실패] {resp.text}", False
+        # 2) ❌ 시스템 메시지 제거 (Assistant에 이미 설정됨)
+        # sys_msg = {"role":"system", "content": SYSTEM_PROMPT}
+        # resp = requests.post(msg_url, headers=headers, json=sys_msg)
 
-        # 3) user 메시지
-        user_msg = {"role":"user", "content": question}
+        # 3) user 메시지만 전송
+        user_msg = {"role": "user", "content": question}
         resp = requests.post(msg_url, headers=headers, json=user_msg)
         if resp.status_code != 200:
+            logger.error(f"사용자 메시지 전송 실패: {resp.text}")
             return f"[사용자 메시지 전송 실패] {resp.text}", False
 
-        # 4) ✅ 올바른 run 요청 형식
+        # 4) ✅ 수정된 run 요청
         run_payload = {
             "assistant_id": assistant_id,
-            "max_tokens": 2000,        # Run 레벨에서 설정
-            "temperature": 0.7,        # 일관성을 위해 조정
-            "top_p": 1.0
+            "max_tokens": 3000,  # 보고서 생성을 위해 증가
+            "temperature": 0.3   # 일관성을 위해 낮춤
         }
         
         run_resp = requests.post(run_url, headers=headers, json=run_payload)
         if run_resp.status_code != 200:
+            logger.error(f"실행 요청 실패: {run_resp.text}")
             return f"[실행 요청 실패] {run_resp.text}", False
+        
         run_id = run_resp.json()["id"]
 
-        # 5) 완료 대기
-        max_wait_time = 60  # 최대 60초 대기
+        # 5) 완료 대기 (타임아웃 추가)
+        import time
+        max_wait_time = 90  # 90초로 증가
         wait_time = 0
+        
         while wait_time < max_wait_time:
             status_resp = requests.get(f"{run_url}/{run_id}", headers=headers)
             if status_resp.status_code != 200:
                 return f"[상태 확인 실패] {status_resp.text}", False
                 
             status = status_resp.json()["status"]
+            logger.info(f"Assistant 실행 상태: {status}")
+            
             if status == "completed": 
                 break
             elif status in ["failed", "cancelled", "expired"]:
-                return f"[실행 실패] 상태: {status}", False
+                error_msg = status_resp.json().get("last_error", {})
+                logger.error(f"Assistant 실행 실패: {status}, 오류: {error_msg}")
+                return f"[실행 실패] 상태: {status}, 오류: {error_msg}", False
             
-            time.sleep(1.5)
-            wait_time += 1.5
+            time.sleep(2)
+            wait_time += 2
 
         if wait_time >= max_wait_time:
+            logger.error("Assistant 응답 타임아웃")
             return "[타임아웃] 응답 생성이 너무 오래 걸립니다.", False
 
         # 6) 최종 assistant 응답 추출
@@ -822,11 +838,21 @@ def get_clean_answer_from_gpts(question: str) -> Tuple[str, bool]:
             if msg.get("role") == "assistant":
                 for c in msg.get("content", []):
                     if c.get("type") == "text":
-                        return c["text"]["value"].strip(), True
+                        response_text = c["text"]["value"].strip()
+                        
+                        # 응답 품질 검증
+                        if len(response_text) < 100:
+                            logger.warning(f"Assistant 응답이 너무 짧음: {len(response_text)}자")
+                            return "응답이 너무 짧습니다", False
+                        
+                        logger.info(f"Assistant 응답 숵신 완료: {len(response_text)}자")
+                        return response_text, True
 
+        logger.error("Assistant 응답을 찾을 수 없음")
         return "[응답 없음] assistant 메시지를 찾을 수 없습니다.", False
 
     except Exception as e:
+        logger.error(f"get_clean_answer_from_gpts 예외: {str(e)}")
         return f"[예외 발생] {str(e)}", False
 
 # OpenAI Assistant API 연동 함수
@@ -1384,7 +1410,7 @@ st.sidebar.info("""
 # 보고서 생성 UI 부분 사용자 피드백 간소화
 with st.spinner("감사보고서를 생성하는 중..."):
     report_path = generate_audit_report_with_gpt(
-        submission_id=sub_id,
+        submission_id=submission_id,
         department=department,
         manager=manager,
         phone=phone,
@@ -1400,7 +1426,7 @@ with st.spinner("감사보고서를 생성하는 중..."):
             st.download_button(
                 label="📄 보고서 다운로드",
                 data=f.read(),
-                file_name=f"감사보고서_{sub_id}.docx",
+                file_name=f"감사보고서_{submission_id}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
     else:
@@ -1413,10 +1439,15 @@ def show_completion_page():
     # 보고서 생성 (간소화)
     with st.spinner("감사보고서를 생성하는 중..."):
         report_path = generate_audit_report_with_gpt(
-            sub_id, department, manager, phone,
-            contract_name, contract_date, contract_amount,
-            [f for f, _ in uploaded_db_files],
-            [(f, r) for f, r in missing_db_files]
+            submission_id=submission_id,
+            department=department,
+            manager=manager,
+            phone=phone,
+            contract_name=contract_name,
+            contract_date=contract_date,
+            contract_amount=contract_amount,
+            uploaded_files=[f for f, _ in uploaded_db_files],
+            missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
         )
         if report_path:
             email_attachments.append(report_path)
