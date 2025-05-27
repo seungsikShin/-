@@ -1337,15 +1337,15 @@ elif st.session_state["page"] == "파일 업로드":
 elif st.session_state["page"] == "접수 완료":
     st.title("✅ 일상감사 접수 완료")
 
-    # ─── DB에서 접수 정보 불러오기 ───
-    sub_id = st.session_state["submission_id"]
+    # 항상 submission_id 변수 사용
+    submission_id = st.session_state["submission_id"]
     conn = sqlite3.connect('audit_system.db')
     c = conn.cursor()
     c.execute("""
         SELECT department, manager, phone, contract_name, contract_date, contract_amount
         FROM submissions
         WHERE submission_id = ?
-    """, (sub_id,))
+    """, (submission_id,))
     result = c.fetchone()
     if result:
         department, manager, phone, contract_name, contract_date, contract_amount = result
@@ -1360,7 +1360,7 @@ elif st.session_state["page"] == "접수 완료":
     uploaded_file_list = []
     c.execute(
         "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?",
-        (sub_id,)
+        (submission_id,)
     )
     uploaded_db_files = c.fetchall()
 
@@ -1373,7 +1373,7 @@ elif st.session_state["page"] == "접수 완료":
     # 누락된 파일 및 사유
     c.execute(
         "SELECT file_name, reason FROM missing_file_reasons WHERE submission_id = ?",
-        (sub_id,)
+        (submission_id,)
     )
     missing_db_files = c.fetchall()
     
@@ -1387,12 +1387,12 @@ elif st.session_state["page"] == "접수 완료":
     for req_file in required_files:
         # 업로드 파일 확인
         c.execute("SELECT COUNT(*) FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
-                  (sub_id, f"%{req_file}%"))
+                  (submission_id, f"%{req_file}%"))
         file_count = c.fetchone()[0]
         
         # 사유 제공 확인
         c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
-                  (sub_id, req_file))
+                  (submission_id, req_file))
         reason_count = c.fetchone()[0]
         if file_count == 0 and reason_count == 0:
             incomplete_files.append(req_file)
