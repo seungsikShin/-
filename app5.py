@@ -16,7 +16,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
-import datetime, hashlib
+import hashlib  # datetime 제거
 import requests
 import json
 import sqlite3
@@ -28,7 +28,7 @@ import shutil
 from typing import List, Dict, Optional, Tuple, Any
 from docx import Document
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta  # ✅ timedelta 추가
 
 # OCR 관련 라이브러리들 - 에러 방지
 try:
@@ -99,10 +99,10 @@ if not os.path.exists(session_folder):
     os.makedirs(session_folder)
 
 # 세션 타임아웃 설정 (20분)
-session_timeout = datetime.timedelta(minutes=20)
+session_timeout = timedelta(minutes=20)
 
 # 타임아웃 검사 및 세션 연장 로직
-current_time = datetime.datetime.now()
+current_time = datetime.now()
 
 if "last_session_time" not in st.session_state:
     # 최초 실행 시 기록
@@ -1056,7 +1056,7 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
         try:
             # 1. 새 접수 시작 기능
             st.session_state["uploader_reset_token"] = str(uuid.uuid4())
-            st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            st.session_state["timestamp"] = datetime.now().strftime("%Y%m%d%H%M%S")
             
             # 2. 파일 업로더 캐시 초기화 기능
             st.cache_data.clear()
@@ -1076,7 +1076,7 @@ with st.sidebar.expander("초기화 옵션", expanded=True):
             # 새로운 submission_id 생성
             session_id = st.session_state["cookie_session_id"]
             st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
-            st.session_state["last_session_time"] = datetime.datetime.now()
+            st.session_state["last_session_time"] = datetime.now()
             
             # 파일 업로더 관련 세션 초기화
             for key in list(st.session_state.keys()):
@@ -1103,7 +1103,7 @@ if st.session_state["page"] == "질의응답":
         st.session_state.messages.append({
             "role": "assistant", 
             "content": "안녕하세요! 일상감사 접수에 관해 궁금한 점을 물어봐주세요.",
-            "time": datetime.datetime.now().strftime("%H:%M")
+            "time": datetime.now().strftime("%H:%M")
         })
     if "thread_id" not in st.session_state:
         st.session_state.thread_id = None
@@ -1115,7 +1115,7 @@ if st.session_state["page"] == "질의응답":
     
     # 사용자 입력 처리
     if prompt := st.chat_input("질문을 입력하세요"):
-        current_time = datetime.datetime.now().strftime("%H:%M")
+        current_time = datetime.now().strftime("%H:%M")
         
         # 사용자 메시지 표시 및 저장
         st.session_state.messages.append({
@@ -1136,7 +1136,7 @@ if st.session_state["page"] == "질의응답":
         st.session_state.messages.append({
             "role": "assistant", 
             "content": response,
-            "time": datetime.datetime.now().strftime("%H:%M")
+            "time": datetime.now().strftime("%H:%M")
         })
     
     st.markdown("---")
@@ -1272,7 +1272,7 @@ elif st.session_state["page"] == "파일 업로드":
             with col1:
                 user_key = st.session_state["cookie_session_id"]
                 if "timestamp" not in st.session_state:
-                    st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                    st.session_state["timestamp"] = datetime.now().strftime("%Y%m%d%H%M%S")
                 timestamp = st.session_state["timestamp"]
                 uploaded_file = st.file_uploader(
                     f"📄 {file} 업로드", 
