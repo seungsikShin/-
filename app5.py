@@ -28,6 +28,13 @@ import shutil
 from typing import List, Dict, Optional, Tuple, Any
 from docx import Document
 import zipfile
+import PyPDF2
+import pytesseract
+from PIL import Image
+import pdf2image
+import easyocr
+import numpy as np
+import subprocess
 
 # --- 페이지 상태 관리 변수 추가 (맨 위에)
 if "page" not in st.session_state:
@@ -113,13 +120,189 @@ else:
 # 정상 흐름 시 마지막 상호작용 시간 갱신
 st.session_state["last_session_time"] = current_time
 
-# ✅ GPT 감사보고서 docx 생성 함수
+# --- (2) 파일 내용 추출 함수들 ---
+def extract_text_from_docx(file_path):
+    """Word 문서에서 텍스트 추출"""
+    try:
+        doc = Document(file_path)
+        full_text = []
+        for paragraph in doc.paragraphs:
+            if paragraph.text.strip():
+                full_text.append(paragraph.text.strip())
+        return '\n'.join(full_text)
+    except Exception as e:
+        logger.error(f"Word 파일 읽기 오류: {str(e)}")
+        return f"Word 파일 읽기 실패: {str(e)}"
+
+def extract_text_from_pdf(file_path):
+    """PDF에서 텍스트 추출 (일반 텍스트)"""
+    try:
+        with open(file_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+        return text.strip()
+    except Exception as e:
+        logger.error(f"PDF 텍스트 추출 오류: {str(e)}")
+        return f"PDF 텍스트 추출 실패: {str(e)}"
+
+def needs_ocr(pdf_path):
+    """PDF가 OCR이 필요한지 판단"""
+    try:
+        text = extract_text_from_pdf(pdf_path)
+        # 의미있는 텍스트가 적으면 OCR 필요
+        meaningful_text = re.sub(r'\s+', '', text)
+        if len(meaningful_text) < 100:  # 100자 미만이면 OCR 필요로 판단
+            return True
+        return False
+    except:
+        return True
+
+def ocr_pdf_with_easyocr(pdf_path):
+    """EasyOCR을 사용한 PDF OCR 처리"""
+    try:
+        reader = easyocr.Reader(['ko', 'en'])
+        pages = pdf2image.convert_from_path(pdf_path)
+        
+        extracted_text = ""
+        for page_num, page in enumerate(pages):
+            try:
+                result = reader.readtext(np.array(page))
+                page_text = ""
+                for detection in result:
+                    page_text += detection[1] + " "
+                extracted_text += f"[페이지 {page_num + 1}]\n{page_text.strip()}\n\n"
+            except Exception as e:
+                logger.error(f"OCR 처리 오류 (페이지 {page_num + 1}): {str(e)}")
+                extracted_text += f"[페이지 {page_num + 1}] OCR 처리 실패\n\n"
+        
+        return extracted_text.strip()
+    except Exception as e:
+        logger.error(f"EasyOCR 처리 오류: {str(e)}")
+        return f"OCR 처리 실패: {str(e)}"
+
+def ocr_pdf_with_tesseract(pdf_path):
+    """Tesseract를 사용한 PDF OCR 처리 (EasyOCR 대안)"""
+    try:
+        pages = pdf2image.convert_from_path(pdf_path)
+        extracted_text = ""
+        
+        for page_num, page in enumerate(pages):
+            try:
+                text = pytesseract.image_to_string(page, lang='kor+eng')
+                extracted_text += f"[페이지 {page_num + 1}]\n{text.strip()}\n\n"
+            except Exception as e:
+                logger.error(f"Tesseract OCR 오류 (페이지 {page_num + 1}): {str(e)}")
+                extracted_text += f"[페이지 {page_num + 1}] OCR 처리 실패\n\n"
+        
+        return extracted_text.strip()
+    except Exception as e:
+        logger.error(f"Tesseract 처리 오류: {str(e)}")
+        return f"OCR 처리 실패: {str(e)}"
+
+def extract_file_content(file_path):
+    """파일 확장자에 따라 적절한 방법으로 내용 추출"""
+    if not os.path.exists(file_path):
+        return "파일이 존재하지 않습니다."
+    
+    file_ext = os.path.splitext(file_path)[1].lower()
+    
+    try:
+        if file_ext == '.docx':
+            return extract_text_from_docx(file_path)
+        
+        elif file_ext == '.pdf':
+            # 먼저 일반 텍스트 추출 시도
+            text = extract_text_from_pdf(file_path)
+            
+            # OCR 필요 여부 판단
+            if needs_ocr(file_path):
+                logger.info(f"OCR 처리 시작: {file_path}")
+                try:
+                    # EasyOCR 우선 시도
+                    ocr_text = ocr_pdf_with_easyocr(file_path)
+                    if "OCR 처리 실패" not in ocr_text:
+                        return f"[OCR 텍스트]\n{ocr_text}"
+                    else:
+                        # EasyOCR 실패시 Tesseract 시도
+                        logger.info("EasyOCR 실패, Tesseract 시도")
+                        ocr_text = ocr_pdf_with_tesseract(file_path)
+                        return f"[OCR 텍스트]\n{ocr_text}"
+                except Exception as e:
+                    logger.error(f"OCR 처리 실패: {str(e)}")
+                    return f"[일반 텍스트]\n{text}\n\n[OCR 처리 실패]: {str(e)}"
+            
+            return f"[일반 텍스트]\n{text}"
+        
+        elif file_ext == '.txt':
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        
+        elif file_ext in ['.jpg', '.jpeg', '.png', '.tiff', '.bmp']:
+            # 이미지 파일 OCR 처리
+            try:
+                reader = easyocr.Reader(['ko', 'en'])
+                result = reader.readtext(file_path)
+                text = ""
+                for detection in result:
+                    text += detection[1] + " "
+                return f"[이미지 OCR]\n{text.strip()}"
+            except:
+                try:
+                    text = pytesseract.image_to_string(Image.open(file_path), lang='kor+eng')
+                    return f"[이미지 OCR]\n{text.strip()}"
+                except Exception as e:
+                    return f"이미지 OCR 처리 실패: {str(e)}"
+        
+        else:
+            return f"지원하지 않는 파일 형식: {file_ext}"
+    
+    except Exception as e:
+        logger.error(f"파일 처리 오류: {file_path}, {str(e)}")
+        return f"파일 읽기 실패: {str(e)}"
+
+# --- (3) 개선된 GPT 보고서 생성 함수 ---
 def generate_audit_report_with_gpt(submission_id, department, manager, phone,
                                    contract_name, contract_date, contract_amount,
                                    uploaded_files, missing_files_with_reasons) -> Optional[str]:
-    # user_message는 질문만; 실제 문서는 벡터 스토어(file_search)에서 자동 검색
-    user_message = f"""
-다음 정보를 기반으로, A4 3장 분량의 상세하고 전문적인 일상감사 보고서 초안을 작성해주세요.
+    """
+    실제 파일 내용을 분석하여 GPT 기반 감사보고서를 생성합니다.
+    """
+    try:
+        # 1. 업로드된 파일들의 실제 내용 추출
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
+        c.execute(
+            "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?",
+            (submission_id,)
+        )
+        file_records = c.fetchall()
+        conn.close()
+        
+        file_contents = {}
+        total_content_length = 0
+        max_content_per_file = 3000  # 파일당 최대 토큰 제한
+        
+        for file_name, file_path in file_records:
+            logger.info(f"파일 내용 추출 시작: {file_name}")
+            content = extract_file_content(file_path)
+            
+            # 내용이 너무 길면 잘라서 사용
+            if len(content) > max_content_per_file:
+                content = content[:max_content_per_file] + "\n...(내용 생략)"
+            
+            file_contents[file_name] = content
+            total_content_length += len(content)
+            
+            # 전체 내용이 너무 길어지면 중단
+            if total_content_length > 10000:  # 전체 10,000자 제한
+                logger.warning("파일 내용이 너무 길어서 일부만 분석합니다.")
+                break
+        
+        # 2. GPT에 전송할 메시지 구성
+        user_message = f"""
+다음 정보와 실제 문서 내용을 기반으로, A4 3장 분량의 상세하고 전문적인 일상감사 보고서 초안을 작성해주세요.
 
 ## 계약 기본 정보
 - 접수 ID: {submission_id}
@@ -129,40 +312,94 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
 - 계약 체결일: {contract_date}
 - 계약금액: {contract_amount}
 
-## 누락된 자료 및 사유
-{''.join(f'- {n}: {r}\n' for n, r in missing_files_with_reasons) or '없음'}
-
-## 지침
-1. 표준 감사보고서 형식(현황→규정→문제점→개선방안)으로.
-2. 각 항목별로 3~5문장.
-3. 구체적 규정 인용 금지({{4:1†source}} 등 패턴 제거).
-4. 전문 용어 없이 평문으로.
+## 실제 제출 문서 내용 분석
 """
+        
+        # 파일 내용 추가
+        for file_name, content in file_contents.items():
+            user_message += f"\n### 📄 {file_name}\n``````\n"
+        
+        # 누락된 파일 정보 추가
+        if missing_files_with_reasons:
+            user_message += "\n## 누락된 자료 및 사유\n"
+            for file_name, reason in missing_files_with_reasons:
+                user_message += f"- {file_name}: {reason}\n"
+        else:
+            user_message += "\n## 누락된 자료 및 사유\n없음\n"
+        
+        user_message += """
+## 감사보고서 작성 지침
+1. 위의 실제 문서 내용을 철저히 분석하여 구체적인 검토 의견을 제시하세요.
+2. 표준 감사보고서 형식으로 작성하세요:
+   - 검토 개요
+   - 주요 검토 내용
+   - 발견 사항 및 문제점
+   - 개선 권고 사항
+3. 문서에서 발견된 구체적인 내용을 인용하여 근거를 제시하세요.
+4. 계약의 적정성, 절차 준수성, 예산 사용의 타당성을 중점적으로 분석하세요.
+5. 전문 용어는 쉽게 풀어서 설명하세요.
+6. 각 항목별로 3~5문장으로 구체적으로 작성하세요.
+"""
+        
+        logger.info(f"GPT 요청 메시지 길이: {len(user_message)} 문자")
+        
+        # 3. GPT API 호출
+        answer, success = get_clean_answer_from_gpts(user_message)
+        if not success:
+            logger.error("GPT API 호출 실패")
+            return None
 
-    answer, success = get_clean_answer_from_gpts(user_message)
-    if not success:
+        # 4. 응답 정리
+        answer = re.sub(r'\【.*?\】', '', answer)
+        answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)
+
+        # 5. Word 문서 생성
+        document = Document()
+        document.add_heading('일상감사 보고서 (문서 내용 분석 기반)', level=0)
+        
+        # 기본 정보 섹션 추가
+        document.add_heading('접수 정보', level=1)
+        info_table = document.add_table(rows=6, cols=2)
+        info_table.style = 'Table Grid'
+        
+        info_data = [
+            ['접수 ID', submission_id],
+            ['접수 부서', department],
+            ['담당자', f"{manager} ({phone})"],
+            ['계약명', contract_name],
+            ['계약 체결일', contract_date],
+            ['계약금액', contract_amount]
+        ]
+        
+        for i, (label, value) in enumerate(info_data):
+            info_table.cell(i, 0).text = label
+            info_table.cell(i, 1).text = value
+        
+        document.add_paragraph()  # 빈 줄 추가
+        
+        # GPT 응답 내용 추가
+        for line in answer.splitlines():
+            if line.startswith("## "):
+                document.add_heading(line[3:].strip(), level=1)
+            elif line.startswith("### "):
+                document.add_heading(line[4:].strip(), level=2)
+            elif line.startswith("- "):
+                p = document.add_paragraph(style='List Bullet')
+                p.add_run(line[2:].strip())
+            elif line.strip():
+                document.add_paragraph(line.strip())
+        
+        # 파일 저장
+        os.makedirs(os.path.join(base_folder, "draft_reports"), exist_ok=True)
+        file_path = os.path.join(base_folder, "draft_reports", f"감사보고서초안_{submission_id}.docx")
+        document.save(file_path)
+        
+        logger.info(f"감사보고서 생성 완료: {file_path}")
+        return file_path
+        
+    except Exception as e:
+        logger.error(f"감사보고서 생성 오류: {str(e)}")
         return None
-
-    # 응답 후 간단한 클린업
-    answer = re.sub(r'\【.*?\】', '', answer)
-    answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)
-
-    # Word 문서 생성 로직(기존과 동일)
-    document = Document()
-    document.add_heading('일상감사 보고서 초안', level=0)
-    for line in answer.splitlines():
-        if line.startswith("## "):
-            document.add_heading(line[3:].strip(), level=2)
-        elif line.startswith("- "):
-            p = document.add_paragraph(style='List Bullet')
-            p.add_run(line[2:].strip())
-        elif line.strip():
-            document.add_paragraph(line.strip())
-
-    os.makedirs(os.path.join(base_folder, "draft_reports"), exist_ok=True)
-    path = os.path.join(base_folder, "draft_reports", f"감사보고서초안_{submission_id}.docx")
-    document.save(path)
-    return path
 
 # OpenAI API 정보 (하드코딩)
 openai_api_key = st.secrets["OPENAI_API_KEY"]
