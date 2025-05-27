@@ -3,9 +3,6 @@ python-dotenv
 openai
 requests
 python-docx
-git+https://github.com/elapouya/python-docx-template.git
-docx2txt
-matplotlib
 numpy
 PyPDF2==3.0.1
 pytesseract==0.3.10
