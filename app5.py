@@ -73,13 +73,13 @@ if "submission_id" not in st.session_state:
     st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
 submission_id = st.session_state["submission_id"]
 
-# 로깅 설정
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename='audit_system.log'
-)
-logger = logging.getLogger('audit_system')
+# 프로덕션 환경에서는 WARNING 이상만 기록
+if os.getenv("ENVIRONMENT") == "production":
+    logging.basicConfig(level=logging.WARNING)
+else:
+    logging.basicConfig(level=logging.INFO)
+
+logger = logging.getLogger(__name__)
 
 # 파일을 저장할 폴더 경로
 import tempfile
@@ -279,6 +279,7 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
                                    contract_name, contract_date, contract_amount,
                                    uploaded_files, missing_files_with_reasons) -> Optional[str]:
     try:
+        # ✅ 핵심 정보만 로깅
         logger.info(f"보고서 생성 시작 - ID: {submission_id}")
         
         # 입력 정보 검증 강화
@@ -300,8 +301,6 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
             logger.error(f"데이터베이스 연결 오류: {str(db_error)}")
             return None
         
-        logger.info(f"파일 레코드 수: {len(file_records)}")
-        
         file_contents = {}
         
         # 파일이 없어도 기본 보고서는 생성하도록 수정
@@ -321,7 +320,6 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
                     if len(content) > 4000:
                         content = content[:4000] + "\n...(내용이 길어서 일부만 표시)"
                     file_contents[file_name] = content
-                    logger.info(f"파일 처리 성공: {file_name}")
                 else:
                     file_contents[file_name] = f"[처리 실패] {content[:200] if content else '내용 없음'}"
                     
@@ -371,18 +369,10 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
 파일이 없는 경우에도 제공된 기본 정보를 바탕으로 보고서를 작성해주세요.
 """
         
-        logger.info(f"GPT 요청 메시지 길이: {len(user_message)}")
-        
-        # GPT API 호출 전 메시지 확인
-        if len(user_message) < 100:
-            logger.error("GPT 요청 메시지가 너무 짧습니다.")
-            return None
-        
         # GPT API 호출
         try:
             answer, success = get_clean_answer_from_gpts(user_message)
             if not success:
-                logger.error(f"GPT API 호출 실패: {answer}")
                 # 기본 보고서라도 생성
                 answer = f"""
 # 일상감사 보고서 (기본)
@@ -449,19 +439,16 @@ GPT 분석이 실패하여 기본 양식으로 생성되었습니다.
         file_path = os.path.join(reports_folder, f"감사보고서초안_{submission_id}.docx")
         
         document.save(file_path)
-        logger.info(f"감사보고서 생성 완료: {file_path}")
         
         if os.path.exists(file_path):
-            logger.info(f"파일 생성 확인: {file_path}, 크기: {os.path.getsize(file_path)} bytes")
+            logger.info(f"보고서 생성 완료: {submission_id}")
             return file_path
         else:
-            logger.error(f"파일 생성 실패: {file_path}")
+            logger.error(f"보고서 생성 실패: {submission_id}")
             return None
         
     except Exception as e:
-        logger.error(f"감사보고서 생성 오류: {str(e)}")
-        import traceback
-        logger.error(f"상세 오류: {traceback.format_exc()}")
+        logger.error(f"보고서 생성 오류 {submission_id}: {str(e)}")
         return None
 
 # OpenAI API 정보 (하드코딩)
@@ -1385,198 +1372,6 @@ elif st.session_state["page"] == "접수 완료":
             incomplete_files.append(req_file)
     current_missing_files = incomplete_files
 
-# 디버깅용 임시 테스트 버튼 추가
-st.markdown("### 🔧 디버깅 도구")
-if st.button("보고서 생성 테스트"):
-    with st.spinner("보고서 생성 테스트 중..."):
-        report_path = generate_audit_report_with_gpt(
-            submission_id=sub_id,
-            department=department,
-            manager=manager,
-            phone=phone,
-            contract_name=contract_name,
-            contract_date=contract_date,
-            contract_amount=contract_amount,
-            uploaded_files=[f for f, _ in uploaded_db_files],
-            missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
-        )
-        
-        if report_path:
-            st.success(f"✅ 보고서 생성 성공: {report_path}")
-            st.info(f"파일 존재: {os.path.exists(report_path)}")
-            if os.path.exists(report_path):
-                st.info(f"파일 크기: {os.path.getsize(report_path)} bytes")
-        else:
-            st.error("❌ 보고서 생성 실패")
-
-# 이메일 발송 섹션
-    st.markdown("### 이메일 발송")
-    recipient_email = st.text_input("수신자 이메일 주소", value=to_email)
-    report_recipient_email = st.text_input(
-        "보고서 회신 받을 이메일 주소",
-        value="",
-        help="감사보고서 완료 후 회신받을 이메일 주소를 입력하세요"
-    )
-    email_subject = st.text_input("이메일 제목", value=f"일상감사 접수: {submission_id}")
-    additional_message = st.text_area("추가 메시지", value="")
-
-    # ✅ 버튼도 여기 안에 있어야 함
-    if st.button('접수 완료 및 이메일 발송'):
-        if current_missing_files:
-            st.warning(f"누락된 파일: {', '.join(current_missing_files)}. 업로드 또는 사유를 입력해 주세요.")
-        else:
-            # 업로드된 파일들을 ZIP으로 압축
-            zip_file_path = None
-            if uploaded_file_list:
-                zip_folder = os.path.join(base_folder, "zips")
-                if not os.path.exists(zip_folder):
-                    os.makedirs(zip_folder)
-                
-                zip_file_path = os.path.join(zip_folder, f"일상감사_파일_{submission_id}.zip")
-                
-                with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    for file_path in uploaded_file_list:
-                        if os.path.exists(file_path):
-                            zipf.write(file_path, os.path.basename(file_path))
-                
-                # ZIP 파일 다운로드 버튼 제공
-                with open(zip_file_path, "rb") as f:
-                    zip_data = f.read()
-                    st.download_button(
-                        label="모든 파일 다운로드 (ZIP)",
-                        data=zip_data,
-                        file_name=f"일상감사_파일_{submission_id}.zip",
-                        mime="application/zip"
-                    )
-            
-            # 이메일 첨부 파일 목록 준비
-            email_attachments = []
-            
-            # ZIP 파일이 있으면 첨부
-            if zip_file_path and os.path.exists(zip_file_path):
-                email_attachments.append(zip_file_path)
-            else:
-                # ZIP 파일이 없으면 개별 파일 첨부
-                email_attachments.extend(uploaded_file_list)
-            
-            # 이메일 본문 작성
-            body = f"일상감사 접수 ID: {submission_id}\n"
-            body += f"접수일자: {upload_date}\n"
-            body += f"보고서 회신 이메일: {report_recipient_email}\n\n"
-            
-            if additional_message:
-                body += f"추가 메시지:\n{additional_message}\n\n"
-            
-            # 업로드된 파일 목록 추가
-            body += "업로드된 파일 목록:\n"
-            for file_name, _ in uploaded_db_files:
-                body += f"- {file_name}\n"
-            
-            # 누락된 파일 및 사유 추가
-            if missing_db_files:
-                body += "\n누락된 파일 및 사유:\n"
-                for file_name, reason in missing_db_files:
-                    body += f"- {file_name} (사유: {reason})\n"
-            
-            # 첨부 파일 안내 추가
-            if zip_file_path:
-                body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
-            # GPT 보고서 생성 및 첨부 추가
-            with st.spinner("GPT 감사보고서를 생성하는 중..."):
-                report_path = generate_audit_report_with_gpt(
-                    submission_id=sub_id,
-                    department=department,
-                    manager=manager,
-                    phone=phone,
-                    contract_name=contract_name,
-                    contract_date=contract_date,
-                    contract_amount=contract_amount,
-                    uploaded_files=[f for f, _ in uploaded_db_files],
-                    missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
-                )
-                
-                if report_path and os.path.exists(report_path):
-                    email_attachments.append(report_path)
-                    body += "* GPT 기반 감사보고서 초안이 첨부되어 있습니다.\n"
-                    st.success(f"✅ 감사보고서 생성 완료: {os.path.basename(report_path)}")
-                    
-                    # 보고서 다운로드 버튼도 제공
-                    with open(report_path, "rb") as f:
-                        report_data = f.read()
-                        st.download_button(
-                            label="📄 감사보고서 다운로드",
-                            data=report_data,
-                            file_name=f"감사보고서초안_{sub_id}.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        )
-                else:
-                    st.error("❌ 감사보고서 생성에 실패했습니다.")
-                    if report_path:
-                        st.error(f"파일 경로: {report_path}")
-                        st.error(f"파일 존재 여부: {os.path.exists(report_path) if report_path else 'None'}")
-            
-            # 이메일 발송
-            with st.spinner("이메일을 발송 중입니다..."):
-                success, message = send_email(email_subject, body, recipient_email, email_attachments)
-                
-                if success:
-                    # 데이터베이스에 접수 상태 업데이트
-                    update_submission_status(submission_id, "접수완료", 1)
-                    st.success("일상감사 접수가 완료되었으며, 이메일 알림이 발송되었습니다!")
-                    
-                    # 접수 완료 확인서 표시
-                    st.markdown("### 접수 완료 확인서")
-                    st.markdown(f"""
-                    **접수 ID**: {submission_id}  
-                    **접수일자**: {upload_date}  
-                    **처리상태**: 접수완료  
-                    **이메일 발송**: 완료 ({recipient_email})  
-                    **보고서 회신 이메일**: {report_recipient_email}
-                    """)
-                    
-                    # 다운로드 버튼 제공
-                    receipt_text = f"""
-                    일상감사 접수 확인서
-                    
-                    접수 ID: {submission_id}
-                    접수일자: {upload_date}
-                    처리상태: 접수완료
-                    이메일 발송: 완료 ({recipient_email})
-                    보고서 회신 이메일: {report_recipient_email}
-                    
-                    업로드된 파일 목록:
-                    """
-                    for file_name, _ in uploaded_db_files:
-                        receipt_text += f"- {file_name}\n"
-                    
-                    if missing_db_files:
-                        receipt_text += "\n누락된 파일 및 사유:\n"
-                        for file_name, reason in missing_db_files:
-                            receipt_text += f"- {file_name} (사유: {reason})\n"
-                    
-                    st.download_button(
-                        label="접수 확인서 다운로드",
-                        data=receipt_text,
-                        file_name=f"접수확인서_{submission_id}.txt",
-                        mime="text/plain"
-                    )
-                    
-                    # 이메일 발송 후 메모리 정리
-                    for attachment in email_attachments:
-                        if os.path.exists(attachment):
-                            try:
-                                # ZIP 파일은 남기고 나머지는 삭제 (선택적)
-                                if not attachment.endswith('.zip'):
-                                    os.remove(attachment)
-                            except Exception as e:
-                                logger.error(f"첨부파일 정리 오류: {str(e)}")
-                    
-                    # 캐시 데이터 초기화
-                    st.cache_data.clear()
-                    gc.collect()
-                else:
-                    st.error(f"이메일 발송 중 오류가 발생했습니다: {message}")
-
 # 페이지 하단 정보
 st.sidebar.markdown("---")
 st.sidebar.info("""
@@ -1585,3 +1380,55 @@ st.sidebar.info("""
     OKH. 감사팀
     📞 02-2009-6512/ 신승식
 """)
+
+# 보고서 생성 UI 부분 사용자 피드백 간소화
+with st.spinner("감사보고서를 생성하는 중..."):
+    report_path = generate_audit_report_with_gpt(
+        submission_id=sub_id,
+        department=department,
+        manager=manager,
+        phone=phone,
+        contract_name=contract_name,
+        contract_date=contract_date,
+        contract_amount=contract_amount,
+        uploaded_files=[f for f, _ in uploaded_db_files],
+        missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
+    )
+    if report_path and os.path.exists(report_path):
+        st.success("✅ 감사보고서가 생성되었습니다.")
+        with open(report_path, "rb") as f:
+            st.download_button(
+                label="📄 보고서 다운로드",
+                data=f.read(),
+                file_name=f"감사보고서_{sub_id}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+    else:
+        st.error("❌ 보고서 생성에 실패했습니다. 관리자에게 문의하세요.")
+
+def show_completion_page():
+    # ... 기존 코드 ...
+    # (DB에서 정보 불러오기, 파일 목록 등)
+    # ...
+    # 보고서 생성 (간소화)
+    with st.spinner("감사보고서를 생성하는 중..."):
+        report_path = generate_audit_report_with_gpt(
+            sub_id, department, manager, phone,
+            contract_name, contract_date, contract_amount,
+            [f for f, _ in uploaded_db_files],
+            [(f, r) for f, r in missing_db_files]
+        )
+        if report_path:
+            email_attachments.append(report_path)
+            st.success("✅ 감사보고서가 생성되었습니다.")
+        else:
+            st.warning("⚠️ 감사보고서 생성에 실패했지만 접수는 완료되었습니다.")
+    # 이메일 전송
+    if st.button("📧 이메일 전송", type="primary"):
+        with st.spinner("이메일을 전송하는 중..."):
+            success = send_email_with_attachments(...)
+            if success:
+                st.success("✅ 접수가 완료되었습니다!")
+                st.balloons()
+            else:
+                st.error("❌ 이메일 전송에 실패했습니다.")
