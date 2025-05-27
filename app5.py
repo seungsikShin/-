@@ -114,21 +114,12 @@ else:
 st.session_state["last_session_time"] = current_time
 
 # ✅ GPT 감사보고서 docx 생성 함수
-def generate_audit_report_with_gpt(submission_id, department, manager, phone, contract_name,
-                                   contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
-    try:
-        # 제출 자료와 누락 자료를 읽기 쉬운 형식으로 변환
-        uploaded_list = "\n".join([f"- {file}" for file in uploaded_files]) if uploaded_files else "없음"
-        
-        missing_list = ""
-        if missing_files_with_reasons:
-            missing_list = "\n".join([f"- {name}: {reason}" for name, reason in missing_files_with_reasons])
-        else:
-            missing_list = "없음"
-        
-        # 명확하고 상세한 지시사항 포함
-        user_message = f"""
-다음 정보를 기반으로, 상세하고 전문적인 일상감사 보고서를 작성해주세요:
+def generate_audit_report_with_gpt(submission_id, department, manager, phone,
+                                   contract_name, contract_date, contract_amount,
+                                   uploaded_files, missing_files_with_reasons) -> Optional[str]:
+    # user_message는 질문만; 실제 문서는 벡터 스토어(file_search)에서 자동 검색
+    user_message = f"""
+다음 정보를 기반으로, A4 3장 분량의 상세하고 전문적인 일상감사 보고서 초안을 작성해주세요.
 
 ## 계약 기본 정보
 - 접수 ID: {submission_id}
@@ -138,67 +129,40 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
 - 계약 체결일: {contract_date}
 - 계약금액: {contract_amount}
 
-## 제출된 자료
-{uploaded_list}
-
 ## 누락된 자료 및 사유
-{missing_list}
+{''.join(f'- {n}: {r}\n' for n, r in missing_files_with_reasons) or '없음'}
 
-## 보고서 작성 지침
-1. 표준 감사보고서 형식을 따르되, 각 항목은 최소 3-5문장의 상세한 분석을 포함할 것
-2. 각 검토 항목은 "현황 → 규정 → 문제점 → 개선방안" 구조로 서술할 것
-3. 구체적인 규정과 조항을 명확히 인용하고 그 내용을 설명할 것
-4. 모든 발견사항에 그 중요도와 잠재적 영향을 평가할 것
-5. 【4:1†source】와 같은 인용 표시는 포함하지 말 것
-6. 예시나 가정이 아닌 제공된 정보에 기반하여 분석할 것
-7. 전문적인 감사 용어와 문어체를 사용할 것
-8. 각 섹션별로 충분한 상세 분석을 제공할 것
-9. 볼드 처리된 키워드와 콜론(예: **계약명:**, **현황:**)을 사용하지 말고, 대신 일반 텍스트로 서술할 것
-
-감사 전문가가 작성한 것과 같은 수준의 상세하고 전문적인 보고서를 작성해주세요.
+## 지침
+1. 표준 감사보고서 형식(현황→규정→문제점→개선방안)으로.
+2. 각 항목별로 3~5문장.
+3. 구체적 규정 인용 금지({4:1†source} 등 패턴 제거).
+4. 전문 용어 없이 평문으로.
 """
-        
-        # GPT 응답 가져오기
-        answer, success = get_clean_answer_from_gpts(user_message)
-        if not success:
-            return None
 
-        # 인용 마크 및 볼드 콜론 패턴 제거
-        answer = re.sub(r'\【\d+\:\d+\†source\】', '', answer)
-        answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)  # **키워드:** 형태 제거
-        
-        document = Document()
-        document.add_heading('일상감사 보고서 초안', level=0)
-        
-        # 보고서 내용을 적절한 형식으로 변환
-        for line in answer.strip().split("\n"):
-            if line.strip().startswith("# "):
-                document.add_heading(line.replace("# ", "").strip(), level=1)
-            elif line.strip().startswith("## "):
-                document.add_heading(line.replace("## ", "").strip(), level=2)
-            elif line.strip().startswith("### "):
-                document.add_heading(line.replace("### ", "").strip(), level=3)
-            elif line.strip().startswith("- ") or line.strip().startswith("* "):
-                # 불릿 포인트 처리
-                p = document.add_paragraph()
-                p.style = 'List Bullet'
-                p.add_run(line.strip()[2:])
-            else:
-                if line.strip():  # 빈 줄이 아닌 경우만 추가
-                    document.add_paragraph(line.strip())
-
-        report_folder = os.path.join(base_folder, "draft_reports")
-        os.makedirs(report_folder, exist_ok=True)
-        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
-        document.save(report_path)
-        return report_path
-
-    except Exception as e:
-        logger.error(f"GPT 보고서 생성 오류: {str(e)}")
+    answer, success = get_clean_answer_from_gpts(user_message)
+    if not success:
         return None
 
+    # 응답 후 간단한 클린업
+    answer = re.sub(r'\【.*?\】', '', answer)
+    answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)
 
+    # Word 문서 생성 로직(기존과 동일)
+    document = Document()
+    document.add_heading('일상감사 보고서 초안', level=0)
+    for line in answer.splitlines():
+        if line.startswith("## "):
+            document.add_heading(line[3:].strip(), level=2)
+        elif line.startswith("- "):
+            p = document.add_paragraph(style='List Bullet')
+            p.add_run(line[2:].strip())
+        elif line.strip():
+            document.add_paragraph(line.strip())
 
+    os.makedirs(os.path.join(base_folder, "draft_reports"), exist_ok=True)
+    path = os.path.join(base_folder, "draft_reports", f"감사보고서초안_{submission_id}.docx")
+    document.save(path)
+    return path
 
 # OpenAI API 정보 (하드코딩)
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -493,62 +457,71 @@ def update_submission_status(submission_id, status, email_sent=1) -> bool:
 # OpenAI API를 사용하여 질문에 답변하는 함수
 def get_clean_answer_from_gpts(question: str) -> Tuple[str, bool]:
     """
-    Assistant GPTs API v2 기반 GPT에게 질문을 보내고,
-    최종 응답 텍스트만 추출해서 반환합니다.
+    Assistant GPTs API v2 기반으로 system/user 메시지 전송,
+    file_search 도구와 파라미터(model, max_tokens, temperature, top_p) 지정
     """
     try:
         import time
 
         assistant_id = "asst_oTip4nhZNJHinYxehJ7itwG9"
-
+        thread_url   = "https://api.openai.com/v1/threads"
         headers = {
             "Authorization": f"Bearer {openai_api_key}",
             "OpenAI-Organization": openai_org_id,
             "Content-Type": "application/json",
             "OpenAI-Beta": "assistants=v2"
         }
-        # 1. 새 스레드 생성
-        thread_url = "https://api.openai.com/v1/threads"
-        thread_response = requests.post(thread_url, headers=headers)
-        if thread_response.status_code != 200:
-            return f"[스레드 생성 실패] {thread_response.text}", False
-        
-        thread_id = thread_response.json()["id"]
-        
-        # 1. 메시지를 해당 thread에 추가
-        message_url = f"https://api.openai.com/v1/threads/{thread_id}/messages"
-        add_msg = {
-            "role": "user",
-            "content": question
+
+        # 1) 새 스레드 생성
+        thread_resp = requests.post(thread_url, headers=headers)
+        if thread_resp.status_code != 200:
+            return f"[스레드 생성 실패] {thread_resp.text}", False
+        thread_id = thread_resp.json()["id"]
+        msg_url   = f"{thread_url}/{thread_id}/messages"
+        run_url   = f"{thread_url}/{thread_id}/runs"
+
+        # 2) system 메시지
+        sys_msg = {"role":"system", "content": SYSTEM_PROMPT}
+        resp = requests.post(msg_url, headers=headers, json=sys_msg)
+        if resp.status_code != 200:
+            return f"[시스템 메시지 전송 실패] {resp.text}", False
+
+        # 3) user 메시지
+        user_msg = {"role":"user", "content": question}
+        resp = requests.post(msg_url, headers=headers, json=user_msg)
+        if resp.status_code != 200:
+            return f"[사용자 메시지 전송 실패] {resp.text}", False
+
+        # 4) run 요청 (tool_choice, parameters 지정)
+        run_payload = {
+            "assistant_id": assistant_id,
+            "tool_choice": "file_search",    # 벡터 스토어 자동 검색
+            "parameters": {
+                "model": "gpt-4o",          # GPT-4o
+                "max_tokens": 1500,         # A4 3장 분량 토큰 상한
+                "temperature": 1.0,         # 온도
+                "top_p": 1.0                # Top-p
+            }
         }
-        msg_response = requests.post(message_url, headers=headers, json=add_msg)
-        if msg_response.status_code != 200:
-            return f"[메시지 추가 실패] {msg_response.text}", False
+        run_resp = requests.post(run_url, headers=headers, json=run_payload)
+        if run_resp.status_code != 200:
+            return f"[실행 요청 실패] {run_resp.text}", False
+        run_id = run_resp.json()["id"]
 
-        # 2. GPT 실행 요청 (Run 생성)
-        run_url = f"https://api.openai.com/v1/threads/{thread_id}/runs"
-        run_response = requests.post(run_url, headers=headers, json={"assistant_id": assistant_id})
-        if run_response.status_code != 200:
-            return f"[실행 실패] {run_response.text}", False
-
-        run_id = run_response.json()["id"]
-
-        # 3. 실행 상태 확인 (폴링)
+        # 5) 완료 대기
         while True:
-            check = requests.get(f"{run_url}/{run_id}", headers=headers).json()
-            if check["status"] == "completed":
-                break
-            elif check["status"] == "failed":
-                return "[실행 중 실패] GPT 실행 실패", False
+            status = requests.get(f"{run_url}/{run_id}", headers=headers).json()["status"]
+            if status=="completed": break
+            if status=="failed": return "[실행 중 실패] GPT 실행 실패", False
             time.sleep(1.5)
 
-        # 4. 메시지 목록 조회 후 마지막 assistant 메시지의 텍스트 추출
-        msgs = requests.get(message_url, headers=headers).json()["data"]
+        # 6) 최종 assistant 응답 추출
+        msgs = requests.get(msg_url, headers=headers).json()["data"]
         for msg in reversed(msgs):
-            if msg.get("role") == "assistant":
-                for content in msg.get("content", []):
-                    if content.get("type") == "text":
-                        return content["text"]["value"].strip(), True
+            if msg.get("role")=="assistant":
+                for c in msg.get("content", []):
+                    if c.get("type")=="text":
+                        return c["text"]["value"].strip(), True
 
         return "[응답 없음] assistant 메시지를 찾을 수 없습니다.", False
 
