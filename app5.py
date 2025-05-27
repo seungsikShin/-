@@ -1367,6 +1367,10 @@ elif st.session_state["page"] == "파일 업로드":
 elif st.session_state["page"] == "접수 완료":
     st.title("✅ 일상감사 접수 완료")
     submission_id = st.session_state["submission_id"]
+    # ✅ 변수 기본값 설정
+    department = manager = phone = contract_name = contract_date = contract_amount = "정보 없음"
+    uploaded_db_files = []
+    missing_db_files = []
     try:
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
@@ -1380,15 +1384,26 @@ elif st.session_state["page"] == "접수 완료":
             department, manager, phone, contract_name, contract_date, contract_amount = result
         else:
             st.error("접수 정보를 찾을 수 없습니다.")
-            st.stop()
+            # ✅ st.stop() 대신 기본값 유지하고 계속 진행
+            st.warning("기본값으로 진행합니다.")
+        # 업로드된 파일 조회
         c.execute("SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?", (submission_id,))
-        uploaded_db_files = c.fetchall()
+        uploaded_db_files = c.fetchall() or []
+        # 누락된 파일 조회
         c.execute("SELECT file_name, reason FROM missing_file_reasons WHERE submission_id = ?", (submission_id,))
-        missing_db_files = c.fetchall()
+        missing_db_files = c.fetchall() or []
         conn.close()
     except Exception as e:
         st.error(f"데이터 조회 오류: {str(e)}")
-        st.stop()
+        # ✅ st.stop() 제거하고 기본값으로 계속 진행
+        logger.error(f"접수 완료 페이지 DB 오류: {str(e)}")
+    # ✅ 변수 검증 및 안전한 기본값 설정
+    department = department or "정보 없음"
+    manager = manager or "정보 없음"
+    phone = phone or "정보 없음"
+    contract_name = contract_name or "정보 없음"
+    contract_date = contract_date or "정보 없음"
+    contract_amount = contract_amount or "정보 없음"
     st.subheader("📄 접수 정보")
     col1, col2 = st.columns(2)
     with col1:
