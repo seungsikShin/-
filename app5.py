@@ -278,127 +278,136 @@ def extract_file_content(file_path):
 def generate_audit_report_with_gpt(submission_id, department, manager, phone,
                                    contract_name, contract_date, contract_amount,
                                    uploaded_files, missing_files_with_reasons) -> Optional[str]:
-    """
-    실제 파일 내용을 분석하여 GPT 기반 감사보고서를 생성합니다.
-    """
     try:
         logger.info(f"보고서 생성 시작 - ID: {submission_id}")
         
-        # 1. 입력 정보 검증
-        if not all([submission_id, department, manager, contract_name]):
-            logger.error("필수 정보 누락")
+        # 입력 정보 검증 강화
+        if not submission_id:
+            logger.error("submission_id가 없습니다.")
             return None
+            
+        if not all([department, manager, contract_name]):
+            logger.warning("일부 필수 정보가 누락되었지만 보고서 생성을 계속합니다.")
         
-        # 2. 업로드된 파일들의 실제 내용 추출
-        conn = sqlite3.connect('audit_system.db')
-        c = conn.cursor()
-        c.execute(
-            "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?",
-            (submission_id,)
-        )
-        file_records = c.fetchall()
-        conn.close()
+        # 데이터베이스 연결 확인
+        try:
+            conn = sqlite3.connect('audit_system.db')
+            c = conn.cursor()
+            c.execute("SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?", (submission_id,))
+            file_records = c.fetchall()
+            conn.close()
+        except Exception as db_error:
+            logger.error(f"데이터베이스 연결 오류: {str(db_error)}")
+            return None
         
         logger.info(f"파일 레코드 수: {len(file_records)}")
         
-        if not file_records:
-            logger.warning("업로드된 파일이 없습니다.")
-        
         file_contents = {}
-        total_content_length = 0
-        max_content_per_file = 4000
         
+        # 파일이 없어도 기본 보고서는 생성하도록 수정
         for file_name, file_path in file_records:
-            logger.info(f"파일 내용 추출 시작: {file_name}")
+            logger.info(f"파일 처리 시작: {file_name}")
             
             if not os.path.exists(file_path):
-                logger.warning(f"파일이 존재하지 않음: {file_path}")
+                logger.warning(f"파일 없음: {file_path}")
+                file_contents[file_name] = "[파일을 찾을 수 없습니다]"
                 continue
                 
-            content = extract_file_content(file_path)
-            
-            # 오류 메시지인 경우 스킵
-            if content.startswith("[") or "실패" in content or "제한" in content:
-                logger.warning(f"파일 처리 문제: {file_name} - {content[:100]}")
-                file_contents[file_name] = f"[파일 처리 문제] {content[:200]}"
-                continue
-            
-            # 내용이 너무 길면 잘라서 사용
-            if len(content) > max_content_per_file:
-                content = content[:max_content_per_file] + "\n...(내용이 길어서 일부만 표시)"
-            
-            file_contents[file_name] = content
-            total_content_length += len(content)
-            logger.info(f"파일 처리 완료: {file_name}, 길이: {len(content)}")
-            
-            # 전체 내용이 너무 길어지면 중단
-            if total_content_length > 15000:
-                logger.warning("파일 내용이 너무 길어서 일부만 분석합니다.")
-                break
-        
-        if not file_contents:
-            logger.error("추출된 파일 내용이 없습니다.")
-            # 파일이 없어도 기본 보고서는 생성
-        
-        # 3. GPT에 전송할 메시지 구성
+            try:
+                content = extract_file_content(file_path)
+                
+                if content and not content.startswith("[") and "실패" not in content:
+                    # 내용 길이 제한
+                    if len(content) > 4000:
+                        content = content[:4000] + "\n...(내용이 길어서 일부만 표시)"
+                    file_contents[file_name] = content
+                    logger.info(f"파일 처리 성공: {file_name}")
+                else:
+                    file_contents[file_name] = f"[처리 실패] {content[:200] if content else '내용 없음'}"
+                    
+            except Exception as file_error:
+                logger.error(f"파일 처리 오류 {file_name}: {str(file_error)}")
+                file_contents[file_name] = f"[파일 처리 오류] {str(file_error)}"
+
+        # GPT 메시지 구성
         user_message = f"""
-다음 정보와 실제 문서 내용을 기반으로, 전문적인 일상감사 보고서 초안을 작성해주세요.
+다음 정보를 기반으로 일상감사 보고서 초안을 작성해주세요.
 
-## 계약 기본 정보
+## 기본 정보
 - 접수 ID: {submission_id}
-- 접수 부서: {department}
-- 담당자: {manager} (연락처: {phone})
-- 계약명: {contract_name}
-- 계약 체결일: {contract_date}
-- 계약금액: {contract_amount}
+- 부서: {department or '정보 없음'}
+- 담당자: {manager or '정보 없음'}
+- 연락처: {phone or '정보 없음'}
+- 계약명: {contract_name or '정보 없음'}
+- 계약일: {contract_date or '정보 없음'}
+- 계약금액: {contract_amount or '정보 없음'}
 
-## 제출 문서 내용 분석
+## 제출 문서 내용
 """
         
-        # 파일 내용 추가
         if file_contents:
             for file_name, content in file_contents.items():
-                user_message += f"\n### 📄 {file_name}\n``````\n"
+                user_message += f"\n### 📄 {file_name}\n``````\n{content}\n``````\n"
         else:
-            user_message += "\n### 제출된 문서\n파일이 업로드되지 않았거나 텍스트 추출에 실패했습니다.\n"
+            user_message += "\n제출된 파일이 없거나 텍스트 추출에 실패했습니다.\n"
         
-        # 누락된 파일 정보 추가
+        # 누락 파일 정보
         if missing_files_with_reasons:
-            user_message += "\n## 누락된 자료 및 사유\n"
+            user_message += "\n## 누락 파일 및 사유\n"
             for file_name, reason in missing_files_with_reasons:
                 user_message += f"- {file_name}: {reason}\n"
-        else:
-            user_message += "\n## 누락된 자료 및 사유\n없음\n"
         
         user_message += """
 
-## 감사보고서 작성 요청
-위의 정보를 바탕으로 다음 형식으로 감사보고서를 작성해주세요:
+## 보고서 작성 요청
+위 정보를 바탕으로 다음 구조로 감사보고서를 작성해주세요:
 
-1. **검토 개요**: 접수된 계약의 전반적인 개요
-2. **주요 검토 내용**: 제출된 문서들의 핵심 내용 분석
-3. **발견 사항**: 문서에서 발견된 주요 사항들
-4. **개선 권고 사항**: 감사 관점에서의 권고사항
-5. **결론**: 종합적인 검토 의견
+1. **개요**: 계약 기본 정보 요약
+2. **검토 내용**: 제출 문서 분석
+3. **발견 사항**: 주요 검토 포인트
+4. **권고 사항**: 개선 방안
+5. **결론**: 종합 의견
 
-각 섹션별로 구체적이고 전문적으로 작성해주세요.
+파일이 없는 경우에도 제공된 기본 정보를 바탕으로 보고서를 작성해주세요.
 """
         
-        logger.info(f"GPT 요청 메시지 길이: {len(user_message)} 문자")
+        logger.info(f"GPT 요청 메시지 길이: {len(user_message)}")
         
-        # 4. GPT API 호출
-        answer, success = get_clean_answer_from_gpts(user_message)
-        if not success:
-            logger.error(f"GPT API 호출 실패: {answer}")
+        # GPT API 호출 전 메시지 확인
+        if len(user_message) < 100:
+            logger.error("GPT 요청 메시지가 너무 짧습니다.")
+            return None
+        
+        # GPT API 호출
+        try:
+            answer, success = get_clean_answer_from_gpts(user_message)
+            if not success:
+                logger.error(f"GPT API 호출 실패: {answer}")
+                # 기본 보고서라도 생성
+                answer = f"""
+# 일상감사 보고서 (기본)
+
+## 개요
+- 접수 ID: {submission_id}
+- 계약명: {contract_name or '정보 없음'}
+- 담당자: {manager or '정보 없음'}
+
+## 검토 내용
+GPT 분석이 실패하여 기본 양식으로 생성되었습니다.
+제출된 파일을 수동으로 검토해주세요.
+
+## 권고 사항
+- 제출 문서의 완전성 확인 필요
+- 계약 조건 세부 검토 필요
+
+## 결론
+추가 검토가 필요합니다.
+"""
+        except Exception as gpt_error:
+            logger.error(f"GPT 호출 중 예외: {str(gpt_error)}")
             return None
 
-        logger.info("GPT 응답 수신 완료")
-
-        # 5. 응답 정리
-        answer = re.sub(r'\【.*?\】', '', answer)
-        answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)
-
-        # 6. Word 문서 생성
+        # Word 문서 생성
         document = Document()
         document.add_heading('일상감사 보고서 (문서 내용 분석 기반)', level=0)
         
@@ -409,11 +418,11 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
         
         info_data = [
             ['접수 ID', submission_id],
-            ['접수 부서', department],
-            ['담당자', f"{manager} ({phone})"],
-            ['계약명', contract_name],
-            ['계약 체결일', contract_date],
-            ['계약금액', contract_amount]
+            ['접수 부서', department or '정보 없음'],
+            ['담당자', f"{manager or '정보 없음'} ({phone or '정보 없음'})"],
+            ['계약명', contract_name or '정보 없음'],
+            ['계약일', contract_date or '정보 없음'],
+            ['계약금액', contract_amount or '정보 없음']
         ]
         
         for i, (label, value) in enumerate(info_data):
@@ -434,7 +443,7 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
             elif line.strip():
                 document.add_paragraph(line.strip())
         
-        # 7. 파일 저장
+        # 파일 저장
         reports_folder = os.path.join(base_folder, "draft_reports")
         os.makedirs(reports_folder, exist_ok=True)
         file_path = os.path.join(reports_folder, f"감사보고서초안_{submission_id}.docx")
@@ -442,7 +451,6 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
         document.save(file_path)
         logger.info(f"감사보고서 생성 완료: {file_path}")
         
-        # 파일 존재 여부 재확인
         if os.path.exists(file_path):
             logger.info(f"파일 생성 확인: {file_path}, 크기: {os.path.getsize(file_path)} bytes")
             return file_path
