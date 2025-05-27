@@ -135,7 +135,7 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone,
 ## 지침
 1. 표준 감사보고서 형식(현황→규정→문제점→개선방안)으로.
 2. 각 항목별로 3~5문장.
-3. 구체적 규정 인용 금지({4:1†source} 등 패턴 제거).
+3. 구체적 규정 인용 금지({{4:1†source}} 등 패턴 제거).
 4. 전문 용어 없이 평문으로.
 """
 
