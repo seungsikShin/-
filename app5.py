@@ -5,35 +5,6 @@ st.set_page_config(
     page_icon="📋",
     layout="wide",
 )
-
-st.markdown("""
-<style>
-.tooltip {
-    position: relative;
-    display: inline-block;
-}
-
-.tooltip .tooltiptext {
-    visibility: hidden;
-    width: 200px;
-    background-color: #555;
-    color: white;
-    text-align: center;
-    border-radius: 6px;
-    padding: 5px;
-    position: absolute;
-    z-index: 1;
-    bottom: 125%;
-    left: 50%;
-    margin-left: -100px;
-}
-
-.tooltip:hover .tooltiptext {
-    visibility: visible;
-}
-</style>
-""", unsafe_allow_html=True)
-
 from dotenv import load_dotenv  
 load_dotenv()
 
@@ -440,9 +411,7 @@ def generate_audit_report_with_file_content(submission_id, department, manager, 
                 if result and os.path.exists(result[0]):
                     file_content = extract_file_content(result[0])
                     uploaded_content += f"### 📄 {file_name}\n"
-                    uploaded_content += f"**파일 내용:**\n```
-{file_content}\n```
-\n"
+                    uploaded_content += f"**파일 내용:**\n```\n{file_content}\n```\n\n"
                 else:
                     uploaded_content += f"### 📄 {file_name}\n**상태:** 파일 내용 읽기 실패\n\n"
             
@@ -483,34 +452,24 @@ def generate_audit_report_with_file_content(submission_id, department, manager, 
         if not success:
             return None
 
-        # 인용 마크 및 볼드 콜론 패턴 제거
-        answer = re.sub(r'\【.*?\】', '', answer)
-        answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)
-        
-        # Word 문서 생성
-        document = Document()
-        document.add_heading('일상감사 보고서 초안', level=0)
-        
-        # 보고서 내용을 적절한 형식으로 변환
-        for line in answer.strip().split("\n"):
-            if line.strip().startswith("# "):
-                document.add_heading(line.replace("# ", "").strip(), level=1)
-            elif line.strip().startswith("## "):
-                document.add_heading(line.replace("## ", "").strip(), level=2)
-            elif line.strip().startswith("### "):
-                document.add_heading(line.replace("### ", "").strip(), level=3)
-            elif line.strip().startswith("- ") or line.strip().startswith("* "):
-                p = document.add_paragraph()
-                p.style = 'List Bullet'
-                p.add_run(line.strip()[2:])
-            else:
-                if line.strip():
-                    document.add_paragraph(line.strip())
-
+        # 보고서 파일 저장 (텍스트 파일로)
         report_folder = os.path.join(base_folder, "draft_reports")
         os.makedirs(report_folder, exist_ok=True)
-        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
-        document.save(report_path)
+        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.txt")
+        
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write("일상감사 보고서 초안\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(f"접수 ID: {submission_id}\n")
+            f.write(f"접수 부서: {department}\n")  
+            f.write(f"담당자: {manager} ({phone})\n")
+            f.write(f"계약명: {contract_name}\n")
+            f.write(f"계약 체결일: {contract_date}\n")
+            f.write(f"계약금액: {contract_amount}\n\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(answer)
+        
+        logger.info(f"실제 파일 내용 기반 감사보고서 생성 완료: {report_path}")
         return report_path
 
     except Exception as e:
@@ -703,9 +662,7 @@ def save_missing_reason_to_db(submission_id, file_name, reason) -> bool:
         return False
 
 # 데이터베이스에 접수 내역 저장 (접수 정보 포함)
-def save_submission_with_info(submission_id, department, manager, phone, contract_name, 
-                             contract_period, contract_amount, status="접수중", email_sent=0,
-                             company_name="", budget_item="", contract_method="") -> bool:
+def save_submission_with_info(submission_id, department, manager, phone, contract_name, contract_date, contract_amount, status="접수중", email_sent=0) -> bool:
     """
     접수 내역과 추가 정보를 데이터베이스에 저장합니다.
     
@@ -715,23 +672,11 @@ def save_submission_with_info(submission_id, department, manager, phone, contrac
     try:
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
-        
-        # 테이블에 새 컬럼 추가 (없으면 추가)
-        try:
-            c.execute('ALTER TABLE submissions ADD COLUMN company_name TEXT')
-            c.execute('ALTER TABLE submissions ADD COLUMN budget_item TEXT')  
-            c.execute('ALTER TABLE submissions ADD COLUMN contract_method TEXT')
-        except sqlite3.OperationalError:
-            pass  # 컬럼이 이미 있으면 무시
-        
         c.execute('''
         INSERT OR REPLACE INTO submissions
-        (submission_date, submission_id, department, manager, phone, contract_name, 
-         contract_date, contract_amount, status, email_sent, company_name, budget_item, contract_method)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (upload_date, submission_id, department, manager, phone, contract_name, 
-              contract_period, contract_amount, status, email_sent, company_name, budget_item, contract_method))
-        
+        (submission_date, submission_id, department, manager, phone, contract_name, contract_date, contract_amount, status, email_sent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (upload_date, submission_id, department, manager, phone, contract_name, contract_date, contract_amount, status, email_sent))
         conn.commit()
         conn.close()
         return True
@@ -1093,124 +1038,36 @@ if st.session_state["page"] == "질의응답":
 elif st.session_state["page"] == "파일 업로드":
     st.title("📤 일상감사 파일 업로드")
 
-    # 1. 섹션별 컬러 박스
-    st.markdown("""
-    <div style=\"background-color: #f0f8ff; padding: 15px; border-radius: 10px; border-left: 5px solid #4a90e2;\">
-    <h3 style=\"color: #2c3e50; margin-top: 0;\">📋 접수 정보</h3>
-    </div>
-    """, unsafe_allow_html=True)
-
     # 접수 정보 입력
-    st.markdown("---")
-
-    # 첫 번째 행: 기본 담당자 정보
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        department = st.text_input("📍 접수부서", key="department",
-                                  placeholder="예: 정보통신팀")
-    with col2:
-        manager = st.text_input("👤 담당자", key="manager",
-                               placeholder="홍길동")
-    with col3:
-        phone = st.text_input("📞 전화번호", key="phone",
-                             placeholder="02-1234-5678")
-
-    st.markdown("")  # 간격
-
-    # 두 번째 행: 계약 기본 정보
+    st.markdown("### 접수 정보")
     col1, col2 = st.columns(2)
     with col1:
-        contract_name = st.text_input("📄 계약명", key="contract_name",
-                                     placeholder="계약명을 입력하세요")
+        department = st.text_input("접수부서", key="department")
+        manager = st.text_input("담당자", key="manager")
+        phone = st.text_input("전화번호", key="phone")
     with col2:
-        contract_amount_str = st.text_input("💰 계약금액", value="0", key="contract_amount",
-                                           placeholder="1,000,000")
+        contract_name = st.text_input("계약명", key="contract_name")
+        contract_date = st.text_input("계약 체결일(예상)", key="contract_date")
+        contract_amount_str = st.text_input("계약금액", value="0", key="contract_amount")
+        try:
+            contract_amount = int(contract_amount_str.replace(',', ''))
+            contract_amount_formatted = f"{contract_amount:,}"
+        except ValueError:
+            contract_amount_formatted = contract_amount_str
 
-    st.markdown("")  # 간격
-
-    # 세 번째 행: 계약기간 (시작일/종료일 분리)
-    st.markdown("📅 **계약기간**")
-    col1, col2 = st.columns(2)
-    with col1:
-        contract_start_date = st.date_input("계약 시작일", key="contract_start_date")
-    with col2:
-        contract_end_date = st.date_input("계약 종료일", key="contract_end_date")
-
-    st.markdown("")  # 간격
-
-    # 네 번째 행: 추가 정보
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        company_name = st.text_input("🏢 계약 상대방", key="company_name",
-                                    placeholder="업체명")
-    with col2:
-        budget_item = st.text_input("💼 예산과목", key="budget_item",
-                                   placeholder="예: 지급수수료료")
-    with col3:
-        contract_method = st.selectbox("📋 계약방식",
-                                      ["일반경쟁입찰", "제한경쟁입찰", "지명경쟁입찰", "수의계약", "기타"],
-                                      key="contract_method")
-
-    # 계약금액 포맷팅
-    try:
-        contract_amount = int(contract_amount_str.replace(',', '').replace('원', ''))
-        contract_amount_formatted = f"{contract_amount:,}원"
-    except ValueError:
-        contract_amount_formatted = contract_amount_str
-
-    # 계약기간 문자열 생성 (DB 저장용) -> 입력값 사용 후 DB 저장 전 또는 직전에 생성
-    contract_period = ""
-    if contract_start_date and contract_end_date:
-        contract_period = f"{contract_start_date} ~ {contract_end_date}"
-    elif contract_start_date:
-        contract_period = f"{contract_start_date} ~"
-    elif contract_end_date:
-        contract_period = f"~ {contract_end_date}"
-
-    # 2. 입력 완료 시 체크 표시 및 필수 필드 경고
-    if all([department, manager, phone, contract_name]):
-        st.success("✅ 기본 정보 입력 완료")
-    else:
-        required_fields = []
-        if not department: required_fields.append("접수부서")
-        if not manager: required_fields.append("담당자")
-        if not phone: required_fields.append("전화번호")
-        if not contract_name: required_fields.append("계약명")
-
-        if required_fields:
-            # 수정된 부분: f-string 내 이스케이프 오류 수정
-            # f-string 내에서 중괄호 {}와 따옴표를 함께 사용할 때 발생하는 문제입니다.
-            # join 결과를 직접 문자열로 포맷팅하여 문제를 우회합니다.
-            warning_text = f"⚠️ 필수 입력: {\', \'.join(required_fields)}"
-            st.warning(warning_text)
-
-    # 3. 진행 상태 표시
-    progress_text = "접수 정보 입력 중"
-    # 필수 4개 항목 + 계약기간 둘 중 하나라도 입력되면 접수 정보 완료로 간주
-    if all([department, manager, phone, contract_name]) and (contract_start_date or contract_end_date):
-        progress_text = "접수 정보 입력 완료 ✅"
-
-    st.caption(f"상태: {progress_text}")
-
-    st.markdown("---")
-
-    # 접수 ID 표시 (더 눈에 띄게)
+    # 접수 ID 표시
     if department:
         safe_dept = re.sub(r'[^\w]', '', department)[:6]
         st.session_state["submission_id"] = f"AUDIT-{upload_date}-{safe_dept}"
-
     sid = st.session_state["submission_id"]
-    st.success(f"🆔 **접수 ID**: `{sid}`")
+    st.info(f"접수 ID: {sid}")
+    st.markdown("---")
 
-    # 접수 정보 DB 저장 (모든 변수가 정의된 후에)
-    if all([department, manager, phone, contract_name, contract_period, contract_amount_str]):
+    # 접수 정보 DB 저장
+    if all([department, manager, phone, contract_name, contract_date, contract_amount_str]):
         save_submission_with_info(
             submission_id, department, manager, phone,
-            contract_name, contract_period,  # contract_date → contract_period로 변경
-            contract_amount_formatted,
-            company_name=st.session_state.get("company_name", ""),      # 추가
-            budget_item=st.session_state.get("budget_item", ""),        # 추가
-            contract_method=st.session_state.get("contract_method", "") # 추가
+            contract_name, contract_date, contract_amount_formatted
         )
 
     st.markdown("필요한 파일을 업로드하거나, 해당 파일이 없는 경우 사유를 입력해주세요.")
