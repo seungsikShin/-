@@ -1,31 +1,32 @@
-# 최적화된 GPT 감사보고서 생성 함수
-def generate_audit_report_with_gpt_optimized(submission_id, department, manager, phone, contract_name,
-                                           contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
+# 파일 내용 읽기 함수 - 응급 수정 버전
+def extract_file_content(file_path: str) -> str:
+    """
+    응급 수정: 일단 파일명만 반환하여 앱이 작동하도록 함
+    """
     try:
-        # 제출 자료의 실제 내용 추출
-        uploaded_content = ""
+        file_name = os.path.basename(file_path)
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        return f"[파일 업로드됨: {file_name}]\n[파일 형식: {file_ext}]\n[내용 분석 기능은 추후 활성화 예정]"
+    
+    except Exception as e:
+        return f"[파일 처리 중 오류 발생: {str(e)}]"
+
+# GPT 보고서 생성 함수도 임시 수정
+def generate_audit_report_with_gpt_optimized(submission_id, department, manager, phone, contract_name,
+                                           contract_date, contract_amount, uploaded_files, missing_files_with_reasons):
+    """
+    응급 버전: 파일 내용 읽기 없이 기본 정보만으로 보고서 생성
+    """
+    try:
+        # 파일 목록만 포함 (내용 읽기 제외)
+        uploaded_list = ""
         if uploaded_files:
-            uploaded_content = "## 제출된 자료 및 내용\n\n"
-            
-            # DB에서 실제 파일 경로 가져오기
-            conn = sqlite3.connect('audit_system.db')
-            c = conn.cursor()
-            
+            uploaded_list = "## 제출된 자료\n\n"
             for file_name in uploaded_files:
-                c.execute("SELECT file_path FROM uploaded_files WHERE submission_id = ? AND file_name = ?", 
-                         (submission_id, file_name))
-                result = c.fetchone()
-                
-                if result and os.path.exists(result[0]):
-                    file_content = extract_file_content(result[0])
-                    uploaded_content += f"### 📄 {file_name}\n"
-                    uploaded_content += f"```\n{file_content[:2000]}\n```\n\n"  # 내용 길이 제한
-                else:
-                    uploaded_content += f"### 📄 {file_name}\n[파일 내용 읽기 실패]\n\n"
-            
-            conn.close()
+                uploaded_list += f"- {file_name}\n"
         else:
-            uploaded_content = "제출된 자료: 없음\n\n"
+            uploaded_list = "제출된 자료: 없음\n\n"
         
         # 누락 자료 정리
         missing_content = ""
@@ -35,7 +36,7 @@ def generate_audit_report_with_gpt_optimized(submission_id, department, manager,
         else:
             missing_content = "누락된 자료: 없음\n\n"
         
-        # 🔥 단순화된 프롬프트 (System instructions에 의존)
+        # 단순화된 프롬프트
         user_message = f"""
 일상감사 보고서 초안을 작성해주세요.
 
@@ -47,7 +48,7 @@ def generate_audit_report_with_gpt_optimized(submission_id, department, manager,
 **계약 체결일**: {contract_date}
 **계약금액**: {contract_amount}
 
-{uploaded_content}
+{uploaded_list}
 
 {missing_content}
 
@@ -59,63 +60,24 @@ def generate_audit_report_with_gpt_optimized(submission_id, department, manager,
         if not success:
             return None
 
-        # 인용 마크 제거
-        answer = re.sub(r'\【\d+\:\d+\†source\】', '', answer)
-        answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)
-        
-        # Word 문서 생성
-        document = Document()
-        document.add_heading('일상감사 보고서 초안', level=0)
-        
-        # 접수 정보 테이블 추가
-        info_table = document.add_table(rows=6, cols=2)
-        info_table.style = 'Table Grid'
-        
-        info_data = [
-            ('접수 ID', submission_id),
-            ('접수 부서', department),
-            ('담당자', f"{manager} ({phone})"),
-            ('계약명', contract_name),
-            ('계약 체결일', contract_date),
-            ('계약금액', contract_amount)
-        ]
-        
-        for i, (label, value) in enumerate(info_data):
-            info_table.cell(i, 0).text = label
-            info_table.cell(i, 1).text = str(value)
-        
-        document.add_paragraph()  # 공백 추가
-        
-        # GPT 응답을 문서에 추가
-        for line in answer.strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-                
-            if line.startswith("■ ") or line.startswith("# "):
-                # 주요 섹션 헤딩
-                heading_text = line.replace("■ ", "").replace("# ", "")
-                document.add_heading(heading_text, level=1)
-            elif line.startswith("### "):
-                document.add_heading(line.replace("### ", ""), level=3)
-            elif line.startswith("## "):
-                document.add_heading(line.replace("## ", ""), level=2)
-            elif line.startswith("→ ") or line.startswith("- "):
-                # 권고사항이나 리스트
-                p = document.add_paragraph()
-                p.style = 'List Bullet'
-                p.add_run(line[2:])
-            else:
-                # 일반 문단
-                document.add_paragraph(line)
-
-        # 보고서 저장
+        # 간단한 Word 문서 생성 (python-docx 없이)
+        # 일단 텍스트 파일로 저장
         report_folder = os.path.join(base_folder, "draft_reports")
         os.makedirs(report_folder, exist_ok=True)
-        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
-        document.save(report_path)
+        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.txt")
         
-        logger.info(f"감사보고서 초안 생성 완료: {report_path}")
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write("일상감사 보고서 초안\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(f"접수 ID: {submission_id}\n")
+            f.write(f"접수 부서: {department}\n")
+            f.write(f"담당자: {manager} ({phone})\n")
+            f.write(f"계약명: {contract_name}\n")
+            f.write(f"계약 체결일: {contract_date}\n")
+            f.write(f"계약금액: {contract_amount}\n\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(answer)
+        
         return report_path
 
     except Exception as e:
