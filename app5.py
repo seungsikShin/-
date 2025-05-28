@@ -26,7 +26,7 @@ import re
 import ssl
 import shutil
 from typing import List, Dict, Optional, Tuple, Any
-#from docx import Document
+from docx import Document
 import zipfile
 
 # --- 페이지 상태 관리 변수 추가 (맨 위에)
@@ -201,60 +201,90 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
 
 def extract_file_content(file_path: str) -> str:
     """
-    업로드된 파일의 내용을 추출하여 텍스트로 반환합니다.
+    Word와 PDF 파일의 실제 내용을 추출하여 텍스트로 반환합니다.
     """
     try:
         file_ext = os.path.splitext(file_path)[1].lower()
         
         if file_ext == '.txt':
             with open(file_path, 'r', encoding='utf-8') as f:
-                return f.read()
+                content = f.read()
+                return content[:3000]  # 3000자 제한
         
         elif file_ext == '.docx':
-            doc = Document(file_path)
-            content = []
-            for paragraph in doc.paragraphs:
-                content.append(paragraph.text)
-            return '\n'.join(content)
+            try:
+                from docx import Document
+                doc = Document(file_path)
+                content = []
+                
+                # 모든 문단 텍스트 추출
+                for paragraph in doc.paragraphs:
+                    if paragraph.text.strip():  # 빈 문단 제외
+                        content.append(paragraph.text.strip())
+                
+                # 표(table) 내용도 추출
+                for table in doc.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            if cell.text.strip():
+                                content.append(f"[표] {cell.text.strip()}")
+                
+                full_content = '\n'.join(content)
+                return full_content[:3000] if full_content else "[Word 파일이 비어있음]"
+                
+            except ImportError:
+                return "[Word 파일 - python-docx 모듈 필요]"
+            except Exception as e:
+                return f"[Word 파일 읽기 오류: {str(e)}]"
         
         elif file_ext == '.pdf':
             try:
                 import PyPDF2
+                content = []
+                
                 with open(file_path, 'rb') as f:
                     reader = PyPDF2.PdfReader(f)
-                    content = []
-                    for page in reader.pages:
-                        content.append(page.extract_text())
-                    return '\n'.join(content)
+                    
+                    # 각 페이지의 텍스트 추출
+                    for page_num, page in enumerate(reader.pages):
+                        try:
+                            page_text = page.extract_text()
+                            if page_text.strip():
+                                content.append(f"[페이지 {page_num + 1}]\n{page_text.strip()}")
+                        except Exception as e:
+                            content.append(f"[페이지 {page_num + 1} 읽기 실패: {str(e)}]")
+                
+                full_content = '\n\n'.join(content)
+                return full_content[:3000] if full_content else "[PDF 파일에서 텍스트 추출 실패]"
+                
             except ImportError:
-                return "[PDF 파일 - 내용 읽기 불가: PyPDF2 모듈 필요]"
+                return "[PDF 파일 - PyPDF2 모듈 필요]"
+            except Exception as e:
+                return f"[PDF 파일 읽기 오류: {str(e)}]"
         
         elif file_ext in ['.jpg', '.jpeg', '.png', '.gif']:
-            return "[이미지 파일 - 텍스트 내용 없음]"
+            return "[이미지 파일 - 텍스트 추출 불가]"
         
         elif file_ext in ['.xlsx', '.xls']:
-            try:
-                import pandas as pd
-                df = pd.read_excel(file_path)
-                return df.to_string()
-            except ImportError:
-                return "[엑셀 파일 - 내용 읽기 불가: pandas 모듈 필요]"
+            return "[Excel 파일 - 현재 미지원 (Word/PDF만 지원)]"
         
         else:
             # 기타 텍스트 파일 시도
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
-                    return f.read()
+                    content = f.read()
+                    return content[:3000]
             except UnicodeDecodeError:
                 try:
                     with open(file_path, 'r', encoding='cp949') as f:
-                        return f.read()
+                        content = f.read()
+                        return content[:3000]
                 except:
-                    return "[파일 내용 읽기 실패]"
+                    return "[파일 내용 읽기 실패 - 인코딩 문제]"
     
     except Exception as e:
         logger.error(f"파일 내용 추출 오류: {str(e)}")
-        return f"[파일 읽기 오류: {str(e)}]"
+        return f"[파일 처리 중 오류 발생: {str(e)}]"
 
 # 개선된 GPT 감사보고서 생성 함수
 
@@ -362,29 +392,31 @@ def generate_audit_report_with_gpt_enhanced(submission_id, department, manager, 
 
 # 최적화된 GPT 감사보고서 생성 함수
 
-def generate_audit_report_with_gpt_optimized(submission_id, department, manager, phone, contract_name,
+def generate_audit_report_with_file_content(submission_id, department, manager, phone, contract_name,
                                            contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
     try:
         # 제출 자료의 실제 내용 추출
         uploaded_content = ""
         if uploaded_files:
-            uploaded_content = "## 제출된 자료 및 내용\n\n"
+            uploaded_content = "## 제출된 자료 및 실제 내용\n\n"
             
             # DB에서 실제 파일 경로 가져오기
             conn = sqlite3.connect('audit_system.db')
             c = conn.cursor()
             
             for file_name in uploaded_files:
-                c.execute("SELECT file_path FROM uploaded_files WHERE submission_id = ? AND file_name = ?", 
-                         (submission_id, file_name))
+                c.execute("SELECT file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
+                         (submission_id, f"%{file_name.split(' - ')[0]}%"))
                 result = c.fetchone()
                 
                 if result and os.path.exists(result[0]):
                     file_content = extract_file_content(result[0])
                     uploaded_content += f"### 📄 {file_name}\n"
-                    uploaded_content += f"```\n{file_content[:2000]}\n```\n\n"  # 내용 길이 제한
+                    uploaded_content += f"**파일 내용:**\n```
+{file_content}\n```
+\n"
                 else:
-                    uploaded_content += f"### 📄 {file_name}\n[파일 내용 읽기 실패]\n\n"
+                    uploaded_content += f"### 📄 {file_name}\n**상태:** 파일 내용 읽기 실패\n\n"
             
             conn.close()
         else:
@@ -398,11 +430,11 @@ def generate_audit_report_with_gpt_optimized(submission_id, department, manager,
         else:
             missing_content = "누락된 자료: 없음\n\n"
         
-        # 🔥 단순화된 프롬프트 (System instructions에 의존)
+        # 실제 파일 내용을 포함한 프롬프트
         user_message = f"""
 일상감사 보고서 초안을 작성해주세요.
 
-## 기본 정보
+## 계약 기본 정보
 **접수 ID**: {submission_id}
 **접수 부서**: {department}  
 **담당자**: {manager} (연락처: {phone})
@@ -414,7 +446,8 @@ def generate_audit_report_with_gpt_optimized(submission_id, department, manager,
 
 {missing_content}
 
-위 정보를 바탕으로 일상감사 보고서 초안을 작성해주세요.
+위의 실제 문서 내용을 분석하여 전문적인 일상감사 보고서 초안을 작성해주세요.
+특히 제출된 문서의 구체적인 내용을 인용하고 분석하여 실질적인 검토 의견을 제시해주세요.
 """
         
         # GPT 응답 받기
@@ -422,63 +455,24 @@ def generate_audit_report_with_gpt_optimized(submission_id, department, manager,
         if not success:
             return None
 
-        # 인용 마크 제거
-        answer = re.sub(r'\【\d+\:\d+\†source\】', '', answer)
-        answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)
-        
-        # Word 문서 생성
-        document = Document()
-        document.add_heading('일상감사 보고서 초안', level=0)
-        
-        # 접수 정보 테이블 추가
-        info_table = document.add_table(rows=6, cols=2)
-        info_table.style = 'Table Grid'
-        
-        info_data = [
-            ('접수 ID', submission_id),
-            ('접수 부서', department),
-            ('담당자', f"{manager} ({phone})"),
-            ('계약명', contract_name),
-            ('계약 체결일', contract_date),
-            ('계약금액', contract_amount)
-        ]
-        
-        for i, (label, value) in enumerate(info_data):
-            info_table.cell(i, 0).text = label
-            info_table.cell(i, 1).text = str(value)
-        
-        document.add_paragraph()  # 공백 추가
-        
-        # GPT 응답을 문서에 추가
-        for line in answer.strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-                
-            if line.startswith("■ ") or line.startswith("# "):
-                # 주요 섹션 헤딩
-                heading_text = line.replace("■ ", "").replace("# ", "")
-                document.add_heading(heading_text, level=1)
-            elif line.startswith("### "):
-                document.add_heading(line.replace("### ", ""), level=3)
-            elif line.startswith("## "):
-                document.add_heading(line.replace("## ", ""), level=2)
-            elif line.startswith("→ ") or line.startswith("- "):
-                # 권고사항이나 리스트
-                p = document.add_paragraph()
-                p.style = 'List Bullet'
-                p.add_run(line[2:])
-            else:
-                # 일반 문단
-                document.add_paragraph(line)
-
-        # 보고서 저장
+        # 보고서 파일 저장 (텍스트 파일로)
         report_folder = os.path.join(base_folder, "draft_reports")
         os.makedirs(report_folder, exist_ok=True)
-        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
-        document.save(report_path)
+        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.txt")
         
-        logger.info(f"감사보고서 초안 생성 완료: {report_path}")
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write("일상감사 보고서 초안\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(f"접수 ID: {submission_id}\n")
+            f.write(f"접수 부서: {department}\n")  
+            f.write(f"담당자: {manager} ({phone})\n")
+            f.write(f"계약명: {contract_name}\n")
+            f.write(f"계약 체결일: {contract_date}\n")
+            f.write(f"계약금액: {contract_amount}\n\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(answer)
+        
+        logger.info(f"실제 파일 내용 기반 감사보고서 생성 완료: {report_path}")
         return report_path
 
     except Exception as e:
@@ -1356,7 +1350,7 @@ elif st.session_state["page"] == "접수 완료":
             if zip_file_path:
                 body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
             # ✅ [여기] GPT 보고서 생성 및 첨부 추가
-            report_path = generate_audit_report_with_gpt_optimized(
+            report_path = generate_audit_report_with_file_content(
                 submission_id=submission_id,
                 department=st.session_state.get("department", ""),
                 manager=st.session_state.get("manager", ""),
