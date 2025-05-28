@@ -1305,15 +1305,6 @@ elif st.session_state["page"] == "파일 업로드":
     except ValueError:
         contract_amount_formatted = contract_amount_str
 
-    # 접수 ID 표시 (더 눈에 띄게)
-    st.markdown("---")
-    if department:
-        safe_dept = re.sub(r'[^\w]', '', department)[:6]
-        st.session_state["submission_id"] = f"AUDIT-{upload_date}-{safe_dept}"
-
-    sid = st.session_state["submission_id"]
-    st.success(f"🆔 **접수 ID**: `{sid}`")
-
     # 계약기간 문자열 생성 (DB 저장용)
     contract_period = ""
     if contract_start_date and contract_end_date:
@@ -1323,10 +1314,19 @@ elif st.session_state["page"] == "파일 업로드":
     elif contract_end_date:
         contract_period = f"~ {contract_end_date}"
 
+    # 접수 ID 표시 (더 눈에 띄게)
+    st.markdown("---")
+    if department:
+        safe_dept = re.sub(r'[^\w]', '', department)[:6]
+        st.session_state["submission_id"] = f"AUDIT-{upload_date}-{safe_dept}"
+
+    sid = st.session_state["submission_id"]
+    st.success(f"🆔 **접수 ID**: `{sid}`")
+
     st.markdown("---")
 
-    # 접수 정보 DB 저장
-    if all([department, manager, phone, contract_name, contract_period, contract_amount_str]):
+    # 접수 정보 DB 저장 (모든 변수가 정의된 후에)
+    if all([department, manager, phone, contract_name, contract_amount_str]):
         save_submission_with_info(
             submission_id, department, manager, phone,
             contract_name, contract_period,  # contract_date → contract_period로 변경
@@ -1499,6 +1499,19 @@ elif st.session_state["page"] == "접수 완료":
         company_name = company_name or ""
         budget_item = budget_item or ""
         contract_method = contract_method or ""
+        
+        # ✅ contract_amount_formatted 변수 정의 추가
+        if contract_amount:
+            try:
+                # 이미 포맷된 문자열에서 숫자만 추출
+                amount_only = str(contract_amount).replace(',', '').replace('원', '').strip()
+                amount_num = int(amount_only)
+                contract_amount_formatted = f"{amount_num:,}원"
+            except (ValueError, AttributeError):
+                contract_amount_formatted = str(contract_amount)
+        else:
+            contract_amount_formatted = "0원"
+        
     else:
         st.error("접수 정보를 찾을 수 없습니다. 파일 업로드 페이지에서 접수 정보를 먼저 입력해주세요.")
         department, manager, phone, contract_name, contract_period, contract_amount = "", "", "", "", "", ""
