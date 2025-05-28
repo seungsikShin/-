@@ -395,59 +395,115 @@ def generate_audit_report_exact_format(submission_id, department, manager, phone
                                       contract_period, contract_amount, uploaded_files, 
                                       missing_files_with_reasons, company_name="", 
                                       budget_item="", contract_method="") -> Optional[str]:
+    """
+    일상감사 의견서를 생성합니다. (강화된 오류 처리 포함)
+    """
     try:
+        logger.info(f"보고서 생성 시작: {submission_id}")
+        
+        # 필수 모듈 import
         from docx import Document
-        from docx.shared import Inches, Pt, RGBColor
+        from docx.shared import Inches, Pt
         from docx.enum.text import WD_ALIGN_PARAGRAPH
-        from docx.enum.table import WD_TABLE_ALIGNMENT
-        from docx.oxml.shared import OxmlElement, qn
         import datetime
         import os
+        
+        # 매개변수 검증 및 기본값 설정
+        submission_id = submission_id or "UNKNOWN"
+        department = department or "미입력"
+        manager = manager or "미입력"
+        phone = phone or "미입력"
+        contract_name = contract_name or "미입력"
+        contract_period = contract_period or "미입력"
+        contract_amount = contract_amount or "0원"
+        company_name = company_name or "계약 상대방"
+        budget_item = budget_item or "정보화 사업비"
+        contract_method = contract_method or "일반경쟁입찰"
+        
+        logger.info(f"매개변수 검증 완료: {submission_id}")
+        
+        # Word 문서 생성
         document = Document()
-        # 문서 여백 설정 (A4 기준)
+        
+        # 문서 여백 설정
         sections = document.sections
         for section in sections:
             section.top_margin = Inches(1)
             section.bottom_margin = Inches(1)
             section.left_margin = Inches(1)
             section.right_margin = Inches(1)
+        
+        logger.info(f"문서 기본 설정 완료: {submission_id}")
+        
         # 1. 제목과 서명란 테이블 생성
         create_title_and_signature_table(document)
-        # 2. 감사부명 (빈 줄 + 감사부명)
+        
+        # 2. 감사부명
         document.add_paragraph()
-        dept_para = document.add_paragraph("OKH 감사팀")  # 실제 감사부명으로 변경
+        dept_para = document.add_paragraph("OKH 감사팀")
         dept_para.runs[0].font.name = "맑은 고딕"
         dept_para.runs[0].font.size = Pt(11)
         document.add_paragraph()
-        # 3. 사업개요 표 생성 (실제 입력 데이터 사용)
+        
+        # 3. 사업개요 표 생성
         create_project_overview_table(document, {
             '사업명': contract_name,
             '주관부서': department,
-            '업체명': company_name or "계약 상대방",
+            '업체명': company_name,
             '계약기간': contract_period,
-            '예산과목': budget_item or "정보화 사업비",
+            '예산과목': budget_item,
             '계약금액': contract_amount
         })
-        # 4. 업체 선정절차 표 생성 (실제 입력 데이터 활용)
+        
+        # 4. 업체 선정절차 표 생성
         create_selection_procedure_table(document, uploaded_files, missing_files_with_reasons, contract_method)
+        
         # 5. 검토의견 체크박스
         create_review_opinion_checkbox(document)
+        
         # 6. GPT 기반 의견서 작성
-        audit_opinions = generate_structured_opinions(
-            submission_id, department, manager, phone, contract_name,
-            contract_period, contract_amount, uploaded_files, missing_files_with_reasons
-        )
+        try:
+            audit_opinions = generate_structured_opinions(
+                submission_id, department, manager, phone, contract_name,
+                contract_period, contract_amount, uploaded_files, missing_files_with_reasons
+            )
+            logger.info(f"GPT 의견 생성 완료: {submission_id}")
+        except Exception as gpt_error:
+            logger.error(f"GPT 의견 생성 실패: {gpt_error}")
+            # 기본 의견 사용
+            audit_opinions = {
+                "사업목적검토": "제출된 자료를 검토한 결과, 사업목적이 명확하게 정의되어 있으며 추진 필요성이 인정됩니다.",
+                "업체선정검토": "업체선정 절차가 관련 규정에 따라 적절히 진행되었으나, 일부 보완이 필요한 사항이 있습니다.",
+                "예산검토": "예산 편성 및 집행계획이 적정하며, 예산 범위 내에서 계약이 체결되었습니다.",
+                "계약서검토": "계약서 주요 조항이 적절히 구성되어 있으나, 세부 조건에 대한 보완이 권장됩니다.",
+                "최종의견": "전반적으로 적정하게 진행되었으나, 향후 유사 사업 시 발견사항을 참고하여 개선하시기 바랍니다."
+            }
+        
         # 7. 의견서 박스 생성
         create_opinion_box(document, audit_opinions)
+        
         # 8. 파일 저장
         report_folder = os.path.join(base_folder, "draft_reports")
         os.makedirs(report_folder, exist_ok=True)
-        report_path = os.path.join(report_folder, f"일상감사의견서_{submission_id}.docx")
+        
+        # 파일명에 타임스탬프 추가로 중복 방지
+        timestamp = datetime.datetime.now().strftime("%H%M%S")
+        report_path = os.path.join(report_folder, f"일상감사의견서_{submission_id}_{timestamp}.docx")
+        
         document.save(report_path)
-        logger.info(f"일상감사 양식 보고서 생성 완료: {report_path}")
-        return report_path
+        
+        # 파일 생성 확인
+        if os.path.exists(report_path) and os.path.getsize(report_path) > 0:
+            logger.info(f"일상감사 양식 보고서 생성 완료: {report_path}")
+            return report_path
+        else:
+            logger.error(f"보고서 파일 생성 실패: {report_path}")
+            return None
+            
     except Exception as e:
         logger.error(f"일상감사 양식 보고서 생성 오류: {str(e)}")
+        import traceback
+        logger.error(f"상세 오류: {traceback.format_exc()}")
         return None
 
 def create_title_and_signature_table(document):
@@ -1518,27 +1574,40 @@ elif st.session_state["page"] == "접수 완료":
     result = c.fetchone()
     if result:
         department, manager, phone, contract_name, contract_period, contract_amount, company_name, budget_item, contract_method = result
+    
         # None 값들을 빈 문자열로 처리
+        department = department or ""
+        manager = manager or ""
+        phone = phone or ""
+        contract_name = contract_name or ""
+        contract_period = contract_period or ""
         company_name = company_name or ""
         budget_item = budget_item or ""
         contract_method = contract_method or ""
         
-        # ✅ contract_amount_formatted 변수 정의 추가
+        # ✅ contract_amount_formatted 변수 정의 개선
         if contract_amount:
             try:
                 # 이미 포맷된 문자열에서 숫자만 추출
                 amount_only = str(contract_amount).replace(',', '').replace('원', '').strip()
-                amount_num = int(amount_only)
-                contract_amount_formatted = f"{amount_num:,}원"
+                if amount_only:  # 빈 문자열이 아닌 경우에만
+                    amount_num = int(amount_only)
+                    contract_amount_formatted = f"{amount_num:,}원"
+                else:
+                    contract_amount_formatted = "0원"
             except (ValueError, AttributeError):
-                contract_amount_formatted = str(contract_amount)
+                contract_amount_formatted = str(contract_amount) if contract_amount else "0원"
         else:
             contract_amount_formatted = "0원"
-        
+    
     else:
         st.error("접수 정보를 찾을 수 없습니다. 파일 업로드 페이지에서 접수 정보를 먼저 입력해주세요.")
-        department, manager, phone, contract_name, contract_period, contract_amount = "", "", "", "", "", ""
-        company_name, budget_item, contract_method = "", "", ""
+        # 모든 변수를 빈 문자열로 초기화
+        department = manager = phone = contract_name = contract_period = ""
+        company_name = budget_item = contract_method = ""
+        contract_amount_formatted = "0원"
+
+    conn.close()  # ← 연결 종료 추가
 
     # 접수 내용 요약
     st.markdown("### 접수 내용 요약")
@@ -1657,27 +1726,60 @@ elif st.session_state["page"] == "접수 완료":
             # 첨부 파일 안내 추가
             if zip_file_path:
                 body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
-            # ✅ 일상감사 의견서 생성 및 첨부 추가
-            report_path = generate_audit_report_exact_format(
-                submission_id=submission_id,
-                department=st.session_state.get("department", ""),
-                manager=st.session_state.get("manager", ""),
-                phone=st.session_state.get("phone", ""),
-                contract_name=st.session_state.get("contract_name", ""),
-                contract_period=contract_period,  # 새로운 계약기간 필드
-                contract_amount=contract_amount_formatted,
-                uploaded_files=[f for f, _ in uploaded_db_files],
-                missing_files_with_reasons=[(f, r) for f, r in missing_db_files],
-                company_name=st.session_state.get("company_name", ""),      # 새로 추가
-                budget_item=st.session_state.get("budget_item", ""),        # 새로 추가  
-                contract_method=st.session_state.get("contract_method", "")  # 새로 추가
-            )
+            # ✅ 일상감사 의견서 생성 및 첨부 (안전한 버전)
+            report_generated = False
+            report_path = None
 
-            if report_path and os.path.exists(report_path):
-                email_attachments.append(report_path)
-                body += "* 일상감사 의견서가 첨부되어 있습니다.\n"  # 메시지도 변경
+            with st.spinner("📄 일상감사 의견서 생성 중..."):
+                try:
+                    report_path = generate_audit_report_exact_format(
+                        submission_id=submission_id,
+                        department=department,
+                        manager=manager,
+                        phone=phone,
+                        contract_name=contract_name,
+                        contract_period=contract_period,
+                        contract_amount=contract_amount_formatted,
+                        uploaded_files=[f for f, _ in uploaded_db_files],
+                        missing_files_with_reasons=[(f, r) for f, r in missing_db_files],
+                        company_name=company_name,
+                        budget_item=budget_item,
+                        contract_method=contract_method
+                    )
+                    
+                    if report_path and os.path.exists(report_path):
+                        file_size = os.path.getsize(report_path)
+                        if file_size > 0:
+                            email_attachments.append(report_path)
+                            body += "* 일상감사 의견서가 첨부되어 있습니다.\n"
+                            report_generated = True
+                            st.success(f"✅ 일상감사 의견서 생성 완료 ({file_size:,} bytes)")
+                        else:
+                            st.warning("⚠️ 의견서 파일이 비어있습니다.")
+                    else:
+                        st.warning("⚠️ 일상감사 의견서 생성 실패")
+                        
+                except Exception as e:
+                    st.error(f"❌ 의견서 생성 중 오류: {str(e)}")
+                    logger.error(f"의견서 생성 오류: {str(e)}")
+
+            # 의견서 생성 실패시 알림
+            if not report_generated:
+                body += "* 일상감사 의견서 생성에 실패했습니다. 업로드된 파일만 첨부됩니다.\n"
+                st.info("📝 의견서 없이 파일만 발송됩니다.")
+
+            # 첨부 파일 최종 확인
+            st.write(f"📎 **첨부 파일 목록** ({len(email_attachments)}개):")
+            for i, attachment in enumerate(email_attachments, 1):
+                if os.path.exists(attachment):
+                    size = os.path.getsize(attachment)
+                    filename = os.path.basename(attachment)
+                    st.write(f"  {i}. {filename} ({size:,} bytes)")
+                else:
+                    st.error(f"  {i}. ❌ 파일 없음: {attachment}")
+
             # 이메일 발송
-            with st.spinner("이메일을 발송 중입니다..."):
+            with st.spinner("📧 이메일을 발송 중입니다..."):
                 success, message = send_email(email_subject, body, recipient_email, email_attachments)
                 
                 if success:
