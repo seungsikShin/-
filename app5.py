@@ -762,227 +762,177 @@ if st.session_state["page"] == "질의응답":
 elif st.session_state["page"] == "파일 업로드":
     st.title("📤 일상감사 파일 업로드")
 
-    # 접수 정보 입력 섹션 추가
+    # 접수 정보 입력
     st.markdown("### 접수 정보")
-    
-    # 두 개의 열로 나누어 정보 입력 필드 배치
     col1, col2 = st.columns(2)
-    
     with col1:
         department = st.text_input("접수부서", key="department")
         manager = st.text_input("담당자", key="manager")
         phone = st.text_input("전화번호", key="phone")
-    
     with col2:
         contract_name = st.text_input("계약명", key="contract_name")
         contract_date = st.text_input("계약 체결일(예상)", key="contract_date")
-        
-        # 계약금액 입력 (텍스트 입력으로 변경)
         contract_amount_str = st.text_input("계약금액", value="0", key="contract_amount")
-        
-        # 쉼표 제거 후 숫자로 변환 시도
         try:
             contract_amount = int(contract_amount_str.replace(',', ''))
-            # 다시 형식화하여 저장
             contract_amount_formatted = f"{contract_amount:,}"
         except ValueError:
-            if contract_amount_str:
-                st.error("계약금액은 숫자만 입력해주세요.")
             contract_amount_formatted = contract_amount_str
-    
-    # 접수 ID 생성 - 부서명 포함
+
+    # 접수 ID 표시
     if department:
-        # 부서명의 첫 글자만 추출하여 ID에 포함
         safe_dept = re.sub(r'[^\w]', '', department)[:6]
         st.session_state["submission_id"] = f"AUDIT-{upload_date}-{safe_dept}"
-    
-    # 접수 ID 표시
-    sid = st.session_state.get("submission_id", submission_id)
+    sid = st.session_state["submission_id"]
     st.info(f"접수 ID: {sid}")
     st.markdown("---")
-    
-    # 접수 정보 저장
+
+    # 접수 정보 DB 저장
     if all([department, manager, phone, contract_name, contract_date, contract_amount_str]):
-    # 데이터 저장
         save_submission_with_info(
-            submission_id,
-            department,
-            manager,
-            phone,
-            contract_name,
-            contract_date,
-            contract_amount_formatted
+            submission_id, department, manager, phone,
+            contract_name, contract_date, contract_amount_formatted
         )
-      
-    # 필요한 파일을 업로드하거나 사유 입력 안내
+
     st.markdown("필요한 파일을 업로드하거나, 해당 파일이 없는 경우 사유를 입력해주세요.")
-    
-    # 진행 상황 표시
     progress_container = st.container()
     progress_bar = st.progress(0)
     total_files = len(required_files)
     uploaded_count = 0
-    
-    # 각 파일에 대한 업로드 칸을 생성하고 체크 표시 및 사유 입력 받기
+
+    # 파일 업로드/삭제/사유 입력 루프
     for idx, file in enumerate(required_files):
         st.markdown(f"### {idx+1}. {file}")
-        col1, col2 = st.columns([3, 1])
-        
-        # 파일 유형 별 DB에 업로드됐는지 확인 (file_name, file_path 모두 조회)
+        # DB에서 현재 업로드 혹은 사유 여부 조회
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
-        c.execute("SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
-                (submission_id, f"%{file}%"))
+        c.execute(
+            "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?",
+            (submission_id, f"%{file}%")
+        )
         uploaded_row = c.fetchone()
-        
-        # 사유 입력됐는지 확인
-        c.execute("SELECT reason FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
-                (submission_id, file))
+        c.execute(
+            "SELECT reason FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?",
+            (submission_id, file)
+        )
         reason_row = c.fetchone()
         conn.close()
-        
-        # --------------------- 파일 업로드/사유 각각에 삭제 버튼 추가 ---------------------
+
+        # 1) 이미 업로드된 파일이 있을 때 → 삭제 버튼 노출
         if uploaded_row:
             uploaded_count += 1
             file_name, file_path = uploaded_row
-
             col_a, col_b = st.columns([4,1])
             with col_a:
-                st.success(f"✅ {file} 업로드 완료됨: {file_name}")
+                st.success(f"✅ {file} 업로드 완료: {file_name}")
             with col_b:
-                if st.button(f"{file} 파일 삭제", key=f"delete_file_{file}"):
+                if st.button("삭제", key=f"del_file_{file}"):
                     try:
-                        # DB에서 삭제
+                        # DB 레코드 삭제
                         conn = sqlite3.connect('audit_system.db')
                         c = conn.cursor()
-                        c.execute("DELETE FROM uploaded_files WHERE submission_id = ? AND file_name = ?", 
-                                  (submission_id, file_name))
+                        c.execute(
+                            "DELETE FROM uploaded_files WHERE submission_id = ? AND file_name = ?",
+                            (submission_id, file_name)
+                        )
                         conn.commit()
                         conn.close()
-                        # 파일도 삭제 (실제 존재할 때만)
+                        # 실제 파일 삭제
                         if os.path.exists(file_path):
                             os.remove(file_path)
                         st.success(f"{file} 파일이 삭제되었습니다.")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"{file} 삭제 중 오류: {str(e)}")
+                        st.error(f"파일 삭제 오류: {e}")
             continue
 
+        # 2) 이미 사유가 입력된 경우 → 사유 삭제 버튼 노출
         if reason_row:
             uploaded_count += 1
             col_a, col_b = st.columns([4,1])
             with col_a:
-                st.info(f"📝 {file}: {reason_row[0]}")
+                st.info(f"📝 {file} 사유: {reason_row[0]}")
             with col_b:
-                if st.button(f"{file} 사유 삭제", key=f"delete_reason_{file}"):
+                if st.button("삭제", key=f"del_reason_{file}"):
                     try:
                         conn = sqlite3.connect('audit_system.db')
                         c = conn.cursor()
-                        c.execute("DELETE FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
-                                  (submission_id, file))
+                        c.execute(
+                            "DELETE FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?",
+                            (submission_id, file)
+                        )
                         conn.commit()
                         conn.close()
                         st.success(f"{file} 사유가 삭제되었습니다.")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"{file} 사유 삭제 중 오류: {str(e)}")
+                        st.error(f"사유 삭제 오류: {e}")
             continue
 
+        # 3) 업로드 또는 사유 입력 UI
+        col1, col2 = st.columns([3,1])
         with col1:
-            # 사용자별 고유 키 생성
-            user_key = st.session_state["cookie_session_id"]
-            if "timestamp" not in st.session_state:
-                st.session_state["timestamp"] = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            timestamp = st.session_state["timestamp"]
-            
-            # 파일 업로더에 사용자별 고유 키 사용
             uploaded_file = st.file_uploader(
-                f"📄 {file} 업로드", 
-                type=None,
-                key=f"uploader_{st.session_state['uploader_reset_token']}_{file}"
+                f"📄 {file} 업로드",
+                key=f"uploader_{file}"
             )
-
         with col2:
             if uploaded_file:
-                # 파일 검증
-                is_valid, message = validate_file(uploaded_file)
-        
+                is_valid, msg = validate_file(uploaded_file)
                 if is_valid:
-                    # 파일 저장
-                    file_path = save_uploaded_file(uploaded_file, session_folder)
-
-                    if file_path:
-                        # 파일 정보와 필수 파일 유형 정보도 함께 저장
-                        file_type = os.path.splitext(uploaded_file.name)[1]
+                    path = save_uploaded_file(uploaded_file, session_folder)
+                    if path:
                         save_file_to_db(
-                            submission_id, 
-                            f"{file} - {uploaded_file.name}", # 파일 유형을 파일명에 포함
-                            file_path, 
-                            file_type, 
+                            submission_id,
+                            f"{file} - {uploaded_file.name}",
+                            path,
+                            os.path.splitext(uploaded_file.name)[1],
                             uploaded_file.size
                         )
-                        st.success(f"✅ 업로드 완료")
+                        st.success("✅ 업로드 완료")
                         uploaded_count += 1
-                        
-                        # 메모리 해제를 위한 코드 추가
-                        del uploaded_file
-                        gc.collect()
-                        
-                        # 페이지 다시 로드하여 UI 갱신
                         st.rerun()
                 else:
-                    st.error(message)
+                    st.error(msg)
             else:
                 reason = st.text_input(
-                    f"{file} 업로드하지 않은 이유", 
-                    key=f"reason_{user_key}_{timestamp}_{file}",
-                    help="파일을 업로드하지 않는 경우 반드시 사유를 입력해주세요."
+                    f"{file} 미업로드 사유",
+                    key=f"reason_{file}",
+                    help="업로드 불가 시 사유를 입력하세요."
                 )
-                
                 if reason:
                     if save_missing_reason_to_db(submission_id, file, reason):
-                        st.info("사유가 저장되었습니다.")
+                        st.info("사유 저장됨")
                         uploaded_count += 1
-                        # 사유 저장 후 페이지 리로드
                         st.rerun()
 
-    st.markdown("---")
-
-    # 진행 상황 업데이트
+    # 진행률 표시
     progress_bar.progress(uploaded_count / total_files)
-    progress_container.info(f"진행 상황: {uploaded_count}/{total_files} 완료")
-    
-    # 다음 단계로 버튼 - DB에서 확인하도록 수정
-    if st.button("다음 단계: 접수 완료", key="next_to_complete"):
+    progress_container.info(f"진행 상황: {uploaded_count}/{total_files}")
+
+    # 다음 단계 버튼
+    if st.button("다음 단계: 접수 완료"):
+        # (이전과 동일하게 DB 체크 후 페이지 전환)
         # DB에서 직접 파일 및 사유 정보 확인
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
-        
-        # 파일명에 파일 유형 포함여부 확인
         incomplete_files = []
         for req_file in required_files:
-            # 업로드 파일 확인
             c.execute("SELECT COUNT(*) FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
-                    (submission_id, f"%{req_file}%"))
+                      (submission_id, f"%{req_file}%"))
             file_count = c.fetchone()[0]
-            
-            # 사유 제공 확인
             c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
-                    (submission_id, req_file))
+                      (submission_id, req_file))
             reason_count = c.fetchone()[0]
-            
             if file_count == 0 and reason_count == 0:
                 incomplete_files.append(req_file)
-        
         conn.close()
-        current_missing_files = incomplete_files
-        
         if incomplete_files:
             st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete_files))
         else:
             st.session_state["page"] = "접수 완료"
             st.rerun()
-      
+
 # 접수 완료 페이지
 elif st.session_state["page"] == "접수 완료":
     st.title("✅ 일상감사 접수 완료")
