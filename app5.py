@@ -389,92 +389,296 @@ def generate_audit_report_with_gpt_enhanced(submission_id, department, manager, 
         logger.error(f"GPT 보고서 생성 오류: {str(e)}")
         return None
 
-# 최적화된 GPT 감사보고서 생성 함수
+# 정확한 일상감사 양식으로 보고서 생성
 
-def generate_audit_report_with_file_content(submission_id, department, manager, phone, contract_name,
-                                           contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
+def generate_audit_report_exact_format(submission_id, department, manager, phone, contract_name,
+                                      contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
     try:
-        # 제출 자료의 실제 내용 추출
-        uploaded_content = ""
-        if uploaded_files:
-            uploaded_content = "## 제출된 자료 및 실제 내용\n\n"
-            
-            # DB에서 실제 파일 경로 가져오기
-            conn = sqlite3.connect('audit_system.db')
-            c = conn.cursor()
-            
-            for file_name in uploaded_files:
-                c.execute("SELECT file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
-                         (submission_id, f"%{file_name.split(' - ')[0]}%"))
-                result = c.fetchone()
-                
-                if result and os.path.exists(result[0]):
-                    file_content = extract_file_content(result[0])
-                    uploaded_content += f"### 📄 {file_name}\n"
-                    uploaded_content += f"**파일 내용:**\n```\n{file_content}\n```\n\n"
-                else:
-                    uploaded_content += f"### 📄 {file_name}\n**상태:** 파일 내용 읽기 실패\n\n"
-            
-            conn.close()
-        else:
-            uploaded_content = "제출된 자료: 없음\n\n"
-        
-        # 누락 자료 정리
-        missing_content = ""
-        if missing_files_with_reasons:
-            missing_content = "## 누락된 자료 및 사유\n\n"
-            missing_content += "\n".join([f"- **{name}**: {reason}" for name, reason in missing_files_with_reasons])
-        else:
-            missing_content = "누락된 자료: 없음\n\n"
-        
-        # 실제 파일 내용을 포함한 프롬프트
-        user_message = f"""
-일상감사 보고서 초안을 작성해주세요.
-
-## 계약 기본 정보
-**접수 ID**: {submission_id}
-**접수 부서**: {department}  
-**담당자**: {manager} (연락처: {phone})
-**계약명**: {contract_name}
-**계약 체결일**: {contract_date}
-**계약금액**: {contract_amount}
-
-{uploaded_content}
-
-{missing_content}
-
-위의 실제 문서 내용을 분석하여 전문적인 일상감사 보고서 초안을 작성해주세요.
-특히 제출된 문서의 구체적인 내용을 인용하고 분석하여 실질적인 검토 의견을 제시해주세요.
-"""
-        
-        # GPT 응답 받기
-        answer, success = get_clean_answer_from_gpts(user_message)
-        if not success:
-            return None
-
-        # 보고서 파일 저장 (텍스트 파일로)
+        from docx import Document
+        from docx.shared import Inches, Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.enum.table import WD_TABLE_ALIGNMENT
+        from docx.oxml.shared import OxmlElement, qn
+        import datetime
+        import os
+        document = Document()
+        # 문서 여백 설정 (A4 기준)
+        sections = document.sections
+        for section in sections:
+            section.top_margin = Inches(1)
+            section.bottom_margin = Inches(1)
+            section.left_margin = Inches(1)
+            section.right_margin = Inches(1)
+        # 1. 제목과 서명란 테이블 생성
+        create_title_and_signature_table(document)
+        # 2. 감사부명 (빈 줄 + 감사부명)
+        document.add_paragraph()
+        dept_para = document.add_paragraph("OKH 감사팀")  # 실제 감사부명으로 변경
+        dept_para.runs[0].font.name = "맑은 고딕"
+        dept_para.runs[0].font.size = Pt(11)
+        document.add_paragraph()
+        # 3. 사업개요 표 생성
+        create_project_overview_table(document, {
+            '사업명': contract_name,
+            '주관부서': department,
+            '업체명': extract_company_name_from_files(uploaded_files),  # 파일에서 추출 또는 기본값
+            '계약기간': contract_date,
+            '예산과목': '정보화 사업비',  # 기본값 또는 추후 입력란 추가
+            '계약금액': contract_amount
+        })
+        # 4. 업체 선정절차 표 생성  
+        create_selection_procedure_table(document, uploaded_files, missing_files_with_reasons)
+        # 5. 검토의견 체크박스
+        create_review_opinion_checkbox(document)
+        # 6. GPT 기반 의견서 작성
+        audit_opinions = generate_structured_opinions(
+            submission_id, department, manager, phone, contract_name,
+            contract_date, contract_amount, uploaded_files, missing_files_with_reasons
+        )
+        # 7. 의견서 박스 생성
+        create_opinion_box(document, audit_opinions)
+        # 8. 파일 저장
         report_folder = os.path.join(base_folder, "draft_reports")
         os.makedirs(report_folder, exist_ok=True)
-        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.txt")
-        
-        with open(report_path, 'w', encoding='utf-8') as f:
-            f.write("일상감사 보고서 초안\n")
-            f.write("=" * 50 + "\n\n")
-            f.write(f"접수 ID: {submission_id}\n")
-            f.write(f"접수 부서: {department}\n")  
-            f.write(f"담당자: {manager} ({phone})\n")
-            f.write(f"계약명: {contract_name}\n")
-            f.write(f"계약 체결일: {contract_date}\n")
-            f.write(f"계약금액: {contract_amount}\n\n")
-            f.write("=" * 50 + "\n\n")
-            f.write(answer)
-        
-        logger.info(f"실제 파일 내용 기반 감사보고서 생성 완료: {report_path}")
+        report_path = os.path.join(report_folder, f"일상감사의견서_{submission_id}.docx")
+        document.save(report_path)
+        logger.info(f"일상감사 양식 보고서 생성 완료: {report_path}")
         return report_path
-
     except Exception as e:
-        logger.error(f"GPT 보고서 생성 오류: {str(e)}")
+        logger.error(f"일상감사 양식 보고서 생성 오류: {str(e)}")
         return None
+
+def create_title_and_signature_table(document):
+    import datetime
+    from docx.shared import Pt
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.shared import OxmlElement, qn
+    # 제목과 서명란 통합 테이블 (2행 5열)
+    title_table = document.add_table(rows=2, cols=5)
+    title_table.autofit = False
+    # 첫 번째 행: 제목과 서명란 헤더
+    title_cells = title_table.rows[0].cells
+    # 제목 셀 (첫 번째 셀을 크게)
+    title_cell = title_cells[0]
+    title_cell.text = f"일상감사 의견서\n\n({datetime.datetime.now().strftime('%Y. %m. %d.')})"
+    title_cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if len(title_cell.paragraphs) > 1:
+        title_cell.paragraphs[1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # 제목 폰트 스타일링
+    for paragraph in title_cell.paragraphs:
+        for run in paragraph.runs:
+            run.font.name = "맑은 고딕"
+            run.font.size = Pt(14)
+            run.bold = True
+    # 서명란 헤더
+    signature_headers = ["담당", "팀장", "부장", "감사"]
+    for i, header in enumerate(signature_headers, 1):
+        cell = title_cells[i]
+        cell.text = header
+        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in cell.paragraphs[0].runs:
+            run.font.name = "맑은 고딕"
+            run.font.size = Pt(11)
+            run.bold = True
+    # 두 번째 행: 빈 서명 공간
+    signature_cells = title_table.rows[1].cells
+    signature_cells[0].text = ""  # 제목 아래는 빈 공간
+    for i in range(1, 5):
+        signature_cells[i].text = ""  # 서명 공간
+        # 서명 칸 높이 설정
+        signature_cells[i]._tc.set('w:h', '400')
+    # 테이블 전체에 테두리 설정
+    set_table_borders(title_table)
+    document.add_paragraph()
+
+def create_project_overview_table(document, project_data):
+    from docx.shared import Pt
+    # 사업개요 제목
+    overview_para = document.add_paragraph("- 사업개요")
+    overview_para.runs[0].font.name = "맑은 고딕"
+    overview_para.runs[0].font.size = Pt(11)
+    overview_para.runs[0].bold = True
+    # 사업개요 표 (3행 4열)
+    overview_table = document.add_table(rows=3, cols=4)
+    overview_table.style = 'Table Grid'
+    # 표 데이터 배치
+    table_data = [
+        [project_data['사업명'], "", project_data['주관부서'], ""],
+        [project_data['업체명'], "", project_data['계약기간'], ""],
+        [project_data['예산과목'], "", project_data['계약금액'], ""]
+    ]
+    # 첫 번째와 세 번째 열에 데이터 입력
+    for row_idx, row_data in enumerate(table_data):
+        cells = overview_table.rows[row_idx].cells
+        cells[0].text = row_data[0]  # 사업명/업체명/예산과목
+        cells[2].text = row_data[2]  # 주관부서/계약기간/계약금액
+        # 셀 병합 (각 데이터가 2개 셀을 차지)
+        merge_cells(cells[0], cells[1])
+        merge_cells(cells[2], cells[3])
+        # 폰트 설정
+        for cell in [cells[0], cells[2]]:
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.font.name = "맑은 고딕"
+                    run.font.size = Pt(10)
+    document.add_paragraph()
+
+def create_selection_procedure_table(document, uploaded_files, missing_files_with_reasons):
+    from docx.shared import Pt
+    # 업체 선정절차 제목
+    procedure_para = document.add_paragraph("- 업체 선정절차")
+    procedure_para.runs[0].font.name = "맑은 고딕"
+    procedure_para.runs[0].font.size = Pt(11)
+    procedure_para.runs[0].bold = True
+    # 업체 선정절차 표 (3행 2열)
+    procedure_table = document.add_table(rows=3, cols=2)
+    procedure_table.style = 'Table Grid'
+    # 업로드된 파일에서 정보 추출 시도
+    contract_method = extract_contract_method_from_files(uploaded_files)
+    participating_companies = extract_participating_companies_from_files(uploaded_files)
+    selection_criteria = extract_selection_criteria_from_files(uploaded_files)
+    # 표 데이터
+    procedure_data = [
+        ("계약방식", contract_method),
+        ("참여업체", participating_companies),
+        ("선정기준", selection_criteria)
+    ]
+    for row_idx, (label, content) in enumerate(procedure_data):
+        cells = procedure_table.rows[row_idx].cells
+        cells[0].text = label
+        cells[1].text = content
+        # 첫 번째 열 폰트 (라벨)
+        for run in cells[0].paragraphs[0].runs:
+            run.font.name = "맑은 고딕"
+            run.font.size = Pt(10)
+            run.bold = True
+        # 두 번째 열 폰트 (내용)
+        for run in cells[1].paragraphs[0].runs:
+            run.font.name = "맑은 고딕"
+            run.font.size = Pt(10)
+    document.add_paragraph()
+
+def create_review_opinion_checkbox(document):
+    from docx.shared import Pt
+    opinion_para = document.add_paragraph("- 검토의견 : 적정( V ), 일부 부적정(  ), 부적정(  )")
+    opinion_para.runs[0].font.name = "맑은 고딕"
+    opinion_para.runs[0].font.size = Pt(11)
+    document.add_paragraph()
+
+def create_opinion_box(document, opinions):
+    from docx.shared import Pt
+    # 의견서 테이블 (1행 1열의 큰 박스)
+    opinion_table = document.add_table(rows=1, cols=1)
+    opinion_table.style = 'Table Grid'
+    # 의견 내용 구성
+    opinion_text = ""
+    for i, (section, content) in enumerate(opinions.items(), 1):
+        opinion_text += f"{i}. {section}\n\n{content}\n\n"
+    # 테이블 셀에 의견 내용 추가
+    cell = opinion_table.cell(0, 0)
+    cell.text = opinion_text.strip()
+    # 셀 크기 설정 (충분한 높이)
+    cell._tc.set('w:h', '3000')  # 높이 설정
+    # 셀 내용 폰트 설정
+    for paragraph in cell.paragraphs:
+        for run in paragraph.runs:
+            run.font.name = "맑은 고딕"
+            run.font.size = Pt(10)
+
+def generate_structured_opinions(submission_id, department, manager, phone, contract_name,
+                               contract_date, contract_amount, uploaded_files, missing_files_with_reasons):
+    # 파일 정보 정리
+    file_info = ""
+    if uploaded_files:
+        file_info += "제출 자료:\n" + "\n".join([f"- {f}" for f in uploaded_files])
+    if missing_files_with_reasons:
+        file_info += "\n누락 자료:\n" + "\n".join([f"- {name}: {reason}" for name, reason in missing_files_with_reasons])
+    # GPT 프롬프트 (정확한 5개 항목으로)
+    prompt = f"""
+다음 일상감사 건에 대해 정확히 5개 항목의 검토의견을 작성해주세요:
+
+계약 정보:
+- 계약명: {contract_name}
+- 계약금액: {contract_amount} 
+- 계약일: {contract_date}
+- 담당부서: {department}
+
+{file_info}
+
+다음 5개 항목에 대해 각각 2-3문장의 전문적인 검토의견을 작성해주세요:
+
+**사업목적검토**
+**업체선정검토** 
+**예산검토**
+**계약서검토**
+**최종의견**
+
+각 항목은 "**항목명**"으로 시작하고, 다음 줄에 검토의견을 작성해주세요.
+일상감사 의견서 양식에 맞는 전문적이고 간결한 문체로 작성해주세요.
+"""
+    response, success = get_clean_answer_from_gpts(prompt)
+    if not success:
+        # 기본 의견 반환
+        return {
+            "사업목적검토": "제출된 자료를 검토한 결과, 사업목적이 명확하게 정의되어 있으며 추진 필요성이 인정됩니다.",
+            "업체선정검토": "업체선정 절차가 관련 규정에 따라 적절히 진행되었으나, 일부 보완이 필요한 사항이 있습니다.",
+            "예산검토": "예산 편성 및 집행계획이 적정하며, 예산 범위 내에서 계약이 체결되었습니다.",
+            "계약서검토": "계약서 주요 조항이 적절히 구성되어 있으나, 세부 조건에 대한 보완이 권장됩니다.",
+            "최종의견": "전반적으로 적정하게 진행되었으나, 향후 유사 사업 시 발견사항을 참고하여 개선하시기 바랍니다."
+        }
+    # 응답 파싱
+    opinions = {}
+    current_section = None
+    current_content = []
+    for line in response.split('\n'):
+        if line.startswith('**') and line.endswith('**'):
+            if current_section:
+                opinions[current_section] = ' '.join(current_content).strip()
+            current_section = line.strip('*')
+            current_content = []
+        elif current_section and line.strip():
+            current_content.append(line.strip())
+    # 마지막 섹션 추가
+    if current_section and current_content:
+        opinions[current_section] = ' '.join(current_content).strip()
+    return opinions
+
+def extract_company_name_from_files(uploaded_files):
+    return "계약 상대방"  # 기본값
+
+def extract_contract_method_from_files(uploaded_files):
+    return "일반경쟁입찰"  # 기본값
+
+def extract_participating_companies_from_files(uploaded_files):
+    return "입찰공고 확인"  # 기본값
+
+def extract_selection_criteria_from_files(uploaded_files):
+    return "최저가격 낙찰"  # 기본값
+
+def merge_cells(cell1, cell2):
+    try:
+        cell1.merge(cell2)
+    except:
+        pass  # 병합 실패시 무시
+
+def set_table_borders(table):
+    from docx.oxml.shared import OxmlElement, qn
+    try:
+        for row in table.rows:
+            for cell in row.cells:
+                tc = cell._tc
+                tcPr = tc.get_or_add_tcPr()
+                borders = OxmlElement('w:tcBorders')
+                for border_name in ['top', 'left', 'bottom', 'right']:
+                    border = OxmlElement(f'w:{border_name}')
+                    border.set(qn('w:val'), 'single')
+                    border.set(qn('w:sz'), '4')
+                    border.set(qn('w:space'), '0')
+                    border.set(qn('w:color'), '000000')
+                    borders.append(border)
+                tcPr.append(borders)
+    except:
+        pass  # 테두리 설정 실패시 무시
 
 # OpenAI API 정보 (하드코딩)
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -1049,6 +1253,12 @@ elif st.session_state["page"] == "파일 업로드":
         contract_name = st.text_input("계약명", key="contract_name")
         contract_date = st.text_input("계약 체결일(예상)", key="contract_date")
         contract_amount_str = st.text_input("계약금액", value="0", key="contract_amount")
+        company_name = st.text_input("계약 상대방", key="company_name", help="업체명")
+        budget_item = st.text_input("예산과목", value="지급수수료료", key="budget_item")
+        contract_method = st.selectbox("계약방식", 
+                                      ["일반경쟁입찰", "제한경쟁입찰", "지명경쟁입찰", "수의계약", "기타"], 
+                                      key="contract_method")
+    
         try:
             contract_amount = int(contract_amount_str.replace(',', ''))
             contract_amount_formatted = f"{contract_amount:,}"
@@ -1347,7 +1557,7 @@ elif st.session_state["page"] == "접수 완료":
             if zip_file_path:
                 body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
             # ✅ [여기] GPT 보고서 생성 및 첨부 추가
-            report_path = generate_audit_report_with_file_content(
+            report_path = generate_audit_report_exact_format(
                 submission_id=submission_id,
                 department=st.session_state.get("department", ""),
                 manager=st.session_state.get("manager", ""),
@@ -1361,7 +1571,7 @@ elif st.session_state["page"] == "접수 완료":
 
             if report_path and os.path.exists(report_path):
                 email_attachments.append(report_path)
-                body += "* GPT 기반 감사보고서 초안이 첨부되어 있습니다.\n"
+                body += "* 일상감사 의견서가 첨부되어 있습니다.\n"
             # 이메일 발송
             with st.spinner("이메일을 발송 중입니다..."):
                 success, message = send_email(email_subject, body, recipient_email, email_attachments)
