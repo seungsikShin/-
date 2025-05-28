@@ -392,7 +392,9 @@ def generate_audit_report_with_gpt_enhanced(submission_id, department, manager, 
 # 정확한 일상감사 양식으로 보고서 생성
 
 def generate_audit_report_exact_format(submission_id, department, manager, phone, contract_name,
-                                      contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
+                                      contract_period, contract_amount, uploaded_files, 
+                                      missing_files_with_reasons, company_name="", 
+                                      budget_item="", contract_method="") -> Optional[str]:
     try:
         from docx import Document
         from docx.shared import Inches, Pt, RGBColor
@@ -417,23 +419,23 @@ def generate_audit_report_exact_format(submission_id, department, manager, phone
         dept_para.runs[0].font.name = "맑은 고딕"
         dept_para.runs[0].font.size = Pt(11)
         document.add_paragraph()
-        # 3. 사업개요 표 생성
+        # 3. 사업개요 표 생성 (실제 입력 데이터 사용)
         create_project_overview_table(document, {
             '사업명': contract_name,
             '주관부서': department,
-            '업체명': extract_company_name_from_files(uploaded_files),  # 파일에서 추출 또는 기본값
-            '계약기간': contract_date,
-            '예산과목': '정보화 사업비',  # 기본값 또는 추후 입력란 추가
+            '업체명': company_name or "계약 상대방",
+            '계약기간': contract_period,
+            '예산과목': budget_item or "정보화 사업비",
             '계약금액': contract_amount
         })
-        # 4. 업체 선정절차 표 생성  
-        create_selection_procedure_table(document, uploaded_files, missing_files_with_reasons)
+        # 4. 업체 선정절차 표 생성 (실제 입력 데이터 활용)
+        create_selection_procedure_table(document, uploaded_files, missing_files_with_reasons, contract_method)
         # 5. 검토의견 체크박스
         create_review_opinion_checkbox(document)
         # 6. GPT 기반 의견서 작성
         audit_opinions = generate_structured_opinions(
             submission_id, department, manager, phone, contract_name,
-            contract_date, contract_amount, uploaded_files, missing_files_with_reasons
+            contract_period, contract_amount, uploaded_files, missing_files_with_reasons
         )
         # 7. 의견서 박스 생성
         create_opinion_box(document, audit_opinions)
@@ -492,7 +494,7 @@ def create_title_and_signature_table(document):
     document.add_paragraph()
 
 def create_project_overview_table(document, project_data):
-    from docx.shared import Pt
+    """사업개요 표 생성"""
     # 사업개요 제목
     overview_para = document.add_paragraph("- 사업개요")
     overview_para.runs[0].font.name = "맑은 고딕"
@@ -501,11 +503,11 @@ def create_project_overview_table(document, project_data):
     # 사업개요 표 (3행 4열)
     overview_table = document.add_table(rows=3, cols=4)
     overview_table.style = 'Table Grid'
-    # 표 데이터 배치
+    # 표 데이터 배치 (실제 입력값 사용)
     table_data = [
-        [project_data['사업명'], "", project_data['주관부서'], ""],
-        [project_data['업체명'], "", project_data['계약기간'], ""],
-        [project_data['예산과목'], "", project_data['계약금액'], ""]
+        [project_data.get('사업명', ''), "", project_data.get('주관부서', ''), ""],
+        [project_data.get('업체명', ''), "", project_data.get('계약기간', ''), ""],
+        [project_data.get('예산과목', ''), "", project_data.get('계약금액', ''), ""]
     ]
     # 첫 번째와 세 번째 열에 데이터 입력
     for row_idx, row_data in enumerate(table_data):
@@ -513,8 +515,11 @@ def create_project_overview_table(document, project_data):
         cells[0].text = row_data[0]  # 사업명/업체명/예산과목
         cells[2].text = row_data[2]  # 주관부서/계약기간/계약금액
         # 셀 병합 (각 데이터가 2개 셀을 차지)
-        merge_cells(cells[0], cells[1])
-        merge_cells(cells[2], cells[3])
+        try:
+            merge_cells(cells[0], cells[1])
+            merge_cells(cells[2], cells[3])
+        except:
+            pass
         # 폰트 설정
         for cell in [cells[0], cells[2]]:
             for paragraph in cell.paragraphs:
@@ -523,7 +528,7 @@ def create_project_overview_table(document, project_data):
                     run.font.size = Pt(10)
     document.add_paragraph()
 
-def create_selection_procedure_table(document, uploaded_files, missing_files_with_reasons):
+def create_selection_procedure_table(document, uploaded_files, missing_files_with_reasons, contract_method=""):
     from docx.shared import Pt
     # 업체 선정절차 제목
     procedure_para = document.add_paragraph("- 업체 선정절차")
@@ -533,15 +538,11 @@ def create_selection_procedure_table(document, uploaded_files, missing_files_wit
     # 업체 선정절차 표 (3행 2열)
     procedure_table = document.add_table(rows=3, cols=2)
     procedure_table.style = 'Table Grid'
-    # 업로드된 파일에서 정보 추출 시도
-    contract_method = extract_contract_method_from_files(uploaded_files)
-    participating_companies = extract_participating_companies_from_files(uploaded_files)
-    selection_criteria = extract_selection_criteria_from_files(uploaded_files)
-    # 표 데이터
+    # 표 데이터 (실제 입력값 활용)
     procedure_data = [
-        ("계약방식", contract_method),
-        ("참여업체", participating_companies),
-        ("선정기준", selection_criteria)
+        ("계약방식", contract_method or extract_contract_method_from_files(uploaded_files)),
+        ("참여업체", extract_participating_companies_from_files(uploaded_files)),
+        ("선정기준", extract_selection_criteria_from_files(uploaded_files))
     ]
     for row_idx, (label, content) in enumerate(procedure_data):
         cells = procedure_table.rows[row_idx].cells
@@ -695,7 +696,6 @@ def init_db():
     try:
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
-        
         # 접수 내역 테이블 생성 - 필요한 필드 추가
         c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
@@ -708,6 +708,9 @@ def init_db():
             contract_name TEXT,
             contract_date TEXT,
             contract_amount TEXT,
+            company_name TEXT,      -- 추가
+            budget_item TEXT,       -- 추가
+            contract_method TEXT,   -- 추가
             status TEXT,
             email_sent INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -866,7 +869,9 @@ def save_missing_reason_to_db(submission_id, file_name, reason) -> bool:
         return False
 
 # 데이터베이스에 접수 내역 저장 (접수 정보 포함)
-def save_submission_with_info(submission_id, department, manager, phone, contract_name, contract_date, contract_amount, status="접수중", email_sent=0) -> bool:
+def save_submission_with_info(submission_id, department, manager, phone, contract_name, 
+                             contract_period, contract_amount, status="접수중", email_sent=0,
+                             company_name="", budget_item="", contract_method="") -> bool:
     """
     접수 내역과 추가 정보를 데이터베이스에 저장합니다.
     
@@ -876,34 +881,23 @@ def save_submission_with_info(submission_id, department, manager, phone, contrac
     try:
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
+        
+        # 테이블에 새 컬럼 추가 (없으면 추가)
+        try:
+            c.execute('ALTER TABLE submissions ADD COLUMN company_name TEXT')
+            c.execute('ALTER TABLE submissions ADD COLUMN budget_item TEXT')  
+            c.execute('ALTER TABLE submissions ADD COLUMN contract_method TEXT')
+        except sqlite3.OperationalError:
+            pass  # 컬럼이 이미 있으면 무시
+        
         c.execute('''
         INSERT OR REPLACE INTO submissions
-        (submission_date, submission_id, department, manager, phone, contract_name, contract_date, contract_amount, status, email_sent)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (upload_date, submission_id, department, manager, phone, contract_name, contract_date, contract_amount, status, email_sent))
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        logger.error(f"DB 접수 내역 저장 오류: {str(e)}")
-        return False
-
-# 데이터베이스에서 접수 내역 업데이트
-def update_submission_status(submission_id, status, email_sent=1) -> bool:
-    """
-    접수 내역의 상태를 업데이트합니다.
-    
-    Returns:
-        성공 여부
-    """
-    try:
-        conn = sqlite3.connect('audit_system.db')
-        c = conn.cursor()
-        c.execute('''
-        UPDATE submissions
-        SET status = ?, email_sent = ?
-        WHERE submission_id = ?
-        ''', (status, email_sent, submission_id))
+        (submission_date, submission_id, department, manager, phone, contract_name, 
+         contract_date, contract_amount, status, email_sent, company_name, budget_item, contract_method)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (upload_date, submission_id, department, manager, phone, contract_name, 
+              contract_period, contract_amount, status, email_sent, company_name, budget_item, contract_method))
+        
         conn.commit()
         conn.close()
         return True
@@ -1242,43 +1236,104 @@ if st.session_state["page"] == "질의응답":
 elif st.session_state["page"] == "파일 업로드":
     st.title("📤 일상감사 파일 업로드")
 
+    # 1. 섹션별 컬러 박스
+    st.markdown("""
+    <div style=\"background-color: #f0f8ff; padding: 15px; border-radius: 10px; border-left: 5px solid #4a90e2;\">
+    <h3 style=\"color: #2c3e50; margin-top: 0;\">📋 접수 정보</h3>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 접수 정보 입력 UI (기존 코드)
+    # ... (기존 입력 UI 코드가 여기에 위치) ...
+
     # 접수 정보 입력
-    st.markdown("### 접수 정보")
+    st.markdown("### 📋 접수 정보")
+    st.markdown("---")
+
+    # 첫 번째 행: 기본 담당자 정보
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        department = st.text_input("📍 접수부서", key="department", 
+                                  placeholder="예: 정보통신팀")
+    with col2:
+        manager = st.text_input("👤 담당자", key="manager", 
+                               placeholder="홍길동")
+    with col3:
+        phone = st.text_input("📞 전화번호", key="phone", 
+                             placeholder="02-1234-5678")
+
+    st.markdown("")  # 간격
+
+    # 두 번째 행: 계약 기본 정보
     col1, col2 = st.columns(2)
     with col1:
-        department = st.text_input("접수부서", key="department")
-        manager = st.text_input("담당자", key="manager")
-        phone = st.text_input("전화번호", key="phone")
+        contract_name = st.text_input("📄 계약명", key="contract_name", 
+                                     placeholder="계약명을 입력하세요")
     with col2:
-        contract_name = st.text_input("계약명", key="contract_name")
-        contract_date = st.text_input("계약 체결일(예상)", key="contract_date")
-        contract_amount_str = st.text_input("계약금액", value="0", key="contract_amount")
-        company_name = st.text_input("계약 상대방", key="company_name", help="업체명")
-        budget_item = st.text_input("예산과목", key="budget_item", 
-                                   help="해당 사업의 예산과목을 입력하세요")
-        contract_method = st.selectbox("계약방식", 
+        contract_amount_str = st.text_input("💰 계약금액", value="0", key="contract_amount", 
+                                           placeholder="1,000,000")
+
+    st.markdown("")  # 간격
+
+    # 세 번째 행: 계약기간 (시작일/종료일 분리)
+    st.markdown("📅 **계약기간**")
+    col1, col2 = st.columns(2)
+    with col1:
+        contract_start_date = st.date_input("계약 시작일", key="contract_start_date")
+    with col2:
+        contract_end_date = st.date_input("계약 종료일", key="contract_end_date")
+
+    st.markdown("")  # 간격
+
+    # 네 번째 행: 추가 정보
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        company_name = st.text_input("🏢 계약 상대방", key="company_name", 
+                                    placeholder="업체명")
+    with col2:
+        budget_item = st.text_input("💼 예산과목", key="budget_item", 
+                                   placeholder="예: 지급수수료료")
+    with col3:
+        contract_method = st.selectbox("📋 계약방식", 
                                       ["일반경쟁입찰", "제한경쟁입찰", "지명경쟁입찰", "수의계약", "기타"], 
                                       key="contract_method")
-    
-        try:
-            contract_amount = int(contract_amount_str.replace(',', ''))
-            contract_amount_formatted = f"{contract_amount:,}"
-        except ValueError:
-            contract_amount_formatted = contract_amount_str
 
-    # 접수 ID 표시
+    # 계약금액 포맷팅
+    try:
+        contract_amount = int(contract_amount_str.replace(',', '').replace('원', ''))
+        contract_amount_formatted = f"{contract_amount:,}원"
+    except ValueError:
+        contract_amount_formatted = contract_amount_str
+
+    # 접수 ID 표시 (더 눈에 띄게)
+    st.markdown("---")
     if department:
         safe_dept = re.sub(r'[^\w]', '', department)[:6]
         st.session_state["submission_id"] = f"AUDIT-{upload_date}-{safe_dept}"
+
     sid = st.session_state["submission_id"]
-    st.info(f"접수 ID: {sid}")
+    st.success(f"🆔 **접수 ID**: `{sid}`")
+
+    # 계약기간 문자열 생성 (DB 저장용)
+    contract_period = ""
+    if contract_start_date and contract_end_date:
+        contract_period = f"{contract_start_date} ~ {contract_end_date}"
+    elif contract_start_date:
+        contract_period = f"{contract_start_date} ~"
+    elif contract_end_date:
+        contract_period = f"~ {contract_end_date}"
+
     st.markdown("---")
 
     # 접수 정보 DB 저장
-    if all([department, manager, phone, contract_name, contract_date, contract_amount_str]):
+    if all([department, manager, phone, contract_name, contract_period, contract_amount_str]):
         save_submission_with_info(
             submission_id, department, manager, phone,
-            contract_name, contract_date, contract_amount_formatted
+            contract_name, contract_period,  # contract_date → contract_period로 변경
+            contract_amount_formatted,
+            company_name=st.session_state.get("company_name", ""),      # 추가
+            budget_item=st.session_state.get("budget_item", ""),        # 추가
+            contract_method=st.session_state.get("contract_method", "") # 추가
         )
 
     st.markdown("필요한 파일을 업로드하거나, 해당 파일이 없는 경우 사유를 입력해주세요.")
@@ -1428,17 +1483,26 @@ elif st.session_state["page"] == "접수 완료":
     sub_id = st.session_state["submission_id"]
     conn = sqlite3.connect('audit_system.db')
     c = conn.cursor()
+
+    # 모든 필드 조회 (새로운 필드들 포함)
     c.execute("""
-        SELECT department, manager, phone, contract_name, contract_date, contract_amount
+        SELECT department, manager, phone, contract_name, contract_date, contract_amount,
+               company_name, budget_item, contract_method
         FROM submissions
         WHERE submission_id = ?
     """, (sub_id,))
+
     result = c.fetchone()
     if result:
-        department, manager, phone, contract_name, contract_date, contract_amount = result
+        department, manager, phone, contract_name, contract_period, contract_amount, company_name, budget_item, contract_method = result
+        # None 값들을 빈 문자열로 처리
+        company_name = company_name or ""
+        budget_item = budget_item or ""
+        contract_method = contract_method or ""
     else:
         st.error("접수 정보를 찾을 수 없습니다. 파일 업로드 페이지에서 접수 정보를 먼저 입력해주세요.")
-        department, manager, phone, contract_name, contract_date, contract_amount = "", "", "", "", "", ""
+        department, manager, phone, contract_name, contract_period, contract_amount = "", "", "", "", "", ""
+        company_name, budget_item, contract_method = "", "", ""
 
     # 접수 내용 요약
     st.markdown("### 접수 내용 요약")
@@ -1557,22 +1621,25 @@ elif st.session_state["page"] == "접수 완료":
             # 첨부 파일 안내 추가
             if zip_file_path:
                 body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
-            # ✅ [여기] GPT 보고서 생성 및 첨부 추가
+            # ✅ 일상감사 의견서 생성 및 첨부 추가
             report_path = generate_audit_report_exact_format(
                 submission_id=submission_id,
                 department=st.session_state.get("department", ""),
                 manager=st.session_state.get("manager", ""),
                 phone=st.session_state.get("phone", ""),
                 contract_name=st.session_state.get("contract_name", ""),
-                contract_date=st.session_state.get("contract_date", ""),
-                contract_amount=st.session_state.get("contract_amount_formatted", ""),
+                contract_period=contract_period,  # 새로운 계약기간 필드
+                contract_amount=contract_amount_formatted,
                 uploaded_files=[f for f, _ in uploaded_db_files],
-                missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
+                missing_files_with_reasons=[(f, r) for f, r in missing_db_files],
+                company_name=st.session_state.get("company_name", ""),      # 새로 추가
+                budget_item=st.session_state.get("budget_item", ""),        # 새로 추가  
+                contract_method=st.session_state.get("contract_method", "")  # 새로 추가
             )
 
             if report_path and os.path.exists(report_path):
                 email_attachments.append(report_path)
-                body += "* 일상감사 의견서가 첨부되어 있습니다.\n"
+                body += "* 일상감사 의견서가 첨부되어 있습니다.\n"  # 메시지도 변경
             # 이메일 발송
             with st.spinner("이메일을 발송 중입니다..."):
                 success, message = send_email(email_subject, body, recipient_email, email_attachments)
