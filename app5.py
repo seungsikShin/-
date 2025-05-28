@@ -7,8 +7,7 @@ st.set_page_config(
 )
 from dotenv import load_dotenv  
 load_dotenv()
-with open("system_prompt.txt", "r", encoding="utf-8") as f:
-    SYSTEM_PROMPT = f.read().strip()
+
 # 이제부터 다른 import
 import os
 import gc  # gc 모듈 추가
