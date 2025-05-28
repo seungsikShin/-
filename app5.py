@@ -396,198 +396,139 @@ def generate_audit_report_exact_format(submission_id, department, manager, phone
                                       missing_files_with_reasons, company_name="", 
                                       budget_item="", contract_method="") -> Optional[str]:
     """
-    원래 일상감사 양식에 GPT Assistant의 전문 의견을 결합한 보고서 생성
+    최소한의 코드로 확실히 작동하는 의견서 생성
     """
     try:
-        logger.info(f"원래 양식 기반 GPT 의견서 생성 시작: {submission_id}")
+        logger.info(f"최소 코드 의견서 생성 시작: {submission_id}")
         
+        # 1. 기본 모듈만 import
         from docx import Document
-        from docx.shared import Inches, Pt
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
-        from docx.oxml.shared import OxmlElement, qn
         import datetime
         import os
         
-        # 기본값 설정
-        submission_id = submission_id or "UNKNOWN"
-        department = department or "미입력"
-        manager = manager or "미입력"
-        phone = phone or "미입력"
-        contract_name = contract_name or "미입력"
-        contract_period = contract_period or "미입력"
-        contract_amount = contract_amount or "0원"
-        company_name = company_name or "계약 상대방"
-        budget_item = budget_item or "정보화 사업비"
-        contract_method = contract_method or "수의계약"
+        # 2. 기본값 설정
+        submission_id = str(submission_id) if submission_id else "UNKNOWN"
+        department = str(department) if department else "미입력"
+        contract_name = str(contract_name) if contract_name else "미입력"
+        contract_amount = str(contract_amount) if contract_amount else "0원"
         
-        # 1. GPT Assistant로 전문 의견 생성
-        logger.info(f"GPT Assistant 의견 생성 시작: {submission_id}")
+        logger.info(f"기본값 설정 완료: {submission_id}")
         
-        # 파일 정보 정리
-        file_info = ""
-        if uploaded_files:
-            file_info += "제출 자료:\n" + "\n".join([f"- {f}" for f in uploaded_files])
-        if missing_files_with_reasons:
-            file_info += "\n누락 자료:\n" + "\n".join([f"- {name}: {reason}" for name, reason in missing_files_with_reasons])
-        
-        # GPT Assistant 프롬프트 (기존 시스템 지침 활용)
-        assistant_prompt = f"""
-일상감사 의견서를 작성해주세요.
-
-## 계약 정보
-- 계약명: {contract_name}
-- 계약금액: {contract_amount}
-- 계약기간: {contract_period}
-- 담당부서: {department}
-- 담당자: {manager} ({phone})
-- 계약방식: {contract_method}
-- 계약상대방: {company_name}
-- 예산과목: {budget_item}
-
-## 제출/누락 자료 현황
-{file_info if file_info else "제출 자료: 없음"}
-
-위 정보를 바탕으로 다음 5개 항목에 대해 일상감사 의견서 양식에 맞는 전문적인 검토의견을 작성해주세요:
-
-**사업목적검토**
-**업체선정검토**
-**예산검토**
-**계약서검토**
-**최종의견**
-
-각 항목은 "**항목명**"으로 시작하고, 다음 줄에 2-3문장의 구체적이고 전문적인 검토의견을 작성해주세요.
-"""
-        
-        # GPT Assistant 호출 (기존 시스템 지침 활용)
-        try:
-            gpt_response, gpt_success = get_clean_answer_from_gpts(assistant_prompt)
-            logger.info(f"GPT Assistant 응답 성공: {gpt_success}")
-            
-            if gpt_success and gpt_response:
-                # GPT 응답 파싱
-                audit_opinions = {}
-                current_section = None
-                current_content = []
-                
-                for line in gpt_response.split('\n'):
-                    if line.startswith('**') and line.endswith('**'):
-                        if current_section:
-                            audit_opinions[current_section] = ' '.join(current_content).strip()
-                        current_section = line.strip('*')
-                        current_content = []
-                    elif current_section and line.strip():
-                        current_content.append(line.strip())
-                
-                # 마지막 섹션 추가
-                if current_section and current_content:
-                    audit_opinions[current_section] = ' '.join(current_content).strip()
-                
-                logger.info(f"GPT 의견 파싱 완료: {len(audit_opinions)}개 항목")
-            else:
-                logger.warning("GPT Assistant 응답 실패")
-                audit_opinions = {}
-                
-        except Exception as gpt_error:
-            logger.error(f"GPT Assistant 호출 오류: {str(gpt_error)}")
-            audit_opinions = {}
-        
-        # 기본 의견 (GPT 실패 시)
-        if not audit_opinions or len(audit_opinions) < 5:
-            logger.warning("GPT 의견 부족, 기본 의견으로 보완")
-            default_opinions = {
-                "사업목적검토": f"제출된 자료를 검토한 결과, {contract_name} 사업의 목적이 명확하게 정의되어 있으며 {department}에서의 추진 필요성이 인정됩니다.",
-                "업체선정검토": f"업체선정 절차가 관련 규정에 따라 {contract_method} 방식으로 적절히 진행되었으며, {company_name} 선정과정이 적정합니다.",
-                "예산검토": f"예산 편성 및 집행계획이 적정하며, {budget_item} 예산 범위 내에서 계약금액 {contract_amount}이 합리적으로 책정되었습니다.",
-                "계약서검토": f"계약서 주요 조항이 적절히 구성되어 있으며, 계약기간 {contract_period} 설정이 적정합니다.",
-                "최종의견": "전반적으로 적정하게 진행되었으나, 향후 유사 사업 시 발견사항을 참고하여 개선하시기 바랍니다."
-            }
-            
-            for key, default_value in default_opinions.items():
-                if key not in audit_opinions or not audit_opinions[key].strip():
-                    audit_opinions[key] = default_value
-        
-        # 2. 원래 일상감사 양식으로 Word 문서 생성
+        # 3. 가장 단순한 Word 문서 생성
         document = Document()
         
-        # 문서 여백 설정
-        sections = document.sections
-        for section in sections:
-            section.top_margin = Inches(1)
-            section.bottom_margin = Inches(1)
-            section.left_margin = Inches(1)
-            section.right_margin = Inches(1)
-        
-        logger.info(f"문서 기본 설정 완료: {submission_id}")
-        
-        # 1. 제목과 서명란 테이블 생성
-        create_title_and_signature_table(document)
-        
-        # 2. 감사부명
-        document.add_paragraph()
-        dept_para = document.add_paragraph("OKH 감사팀")
-        dept_para.runs[0].font.name = "맑은 고딕"
-        dept_para.runs[0].font.size = Pt(11)
+        # 제목
+        document.add_heading('일상감사 의견서', 0)
+        document.add_paragraph(f"({datetime.datetime.now().strftime('%Y. %m. %d.')})")
         document.add_paragraph()
         
-        # 3. 사업개요 표 생성
-        create_project_overview_table(document, {
-            '사업명': contract_name,
-            '주관부서': department,
-            '업체명': company_name,
-            '계약기간': contract_period,
-            '예산과목': budget_item,
-            '계약금액': contract_amount
-        })
+        # 기본 정보
+        document.add_paragraph("OKH 감사팀")
+        document.add_paragraph()
         
-        # 4. 업체 선정절차 표 생성
-        create_selection_procedure_table(document, uploaded_files, missing_files_with_reasons, contract_method)
+        # 사업개요
+        document.add_heading('- 사업개요', level=2)
+        document.add_paragraph(f"사업명: {contract_name}")
+        document.add_paragraph(f"주관부서: {department}")
+        document.add_paragraph(f"계약금액: {contract_amount}")
+        document.add_paragraph()
         
-        # 5. 검토의견 체크박스
-        create_review_opinion_checkbox(document)
+        # 검토의견
+        document.add_paragraph("- 검토의견 : 적정( V ), 일부 부적정(  ), 부적정(  )")
+        document.add_paragraph()
         
-        # 6. GPT 기반 의견서 작성
+        # GPT 의견 시도
+        logger.info(f"GPT 의견 생성 시도: {submission_id}")
+        
         try:
-            audit_opinions = generate_structured_opinions(
-                submission_id, department, manager, phone, contract_name,
-                contract_period, contract_amount, uploaded_files, missing_files_with_reasons
-            )
-            logger.info(f"GPT 의견 생성 완료: {submission_id}")
+            # 매우 간단한 GPT 프롬프트
+            simple_prompt = f"""
+일상감사 의견서를 작성해주세요.
+
+계약명: {contract_name}
+담당부서: {department}
+계약금액: {contract_amount}
+
+다음 5개 항목에 대해 간단한 검토의견을 작성해주세요:
+1. 사업목적검토
+2. 업체선정검토
+3. 예산검토
+4. 계약서검토
+5. 최종의견
+
+각 항목당 1-2문장으로 작성해주세요.
+"""
+            
+            gpt_response, gpt_success = get_clean_answer_from_gpts(simple_prompt)
+            
+            if gpt_success and gpt_response:
+                logger.info(f"GPT 응답 성공: {len(gpt_response)}자")
+                document.add_paragraph("검토의견:")
+                document.add_paragraph(gpt_response)
+            else:
+                logger.warning("GPT 응답 실패, 기본 의견 사용")
+                basic_opinion = f"""
+1. 사업목적검토
+{contract_name} 사업의 목적이 적절하게 설정되어 있습니다.
+
+2. 업체선정검토
+업체선정 절차가 관련 규정에 따라 진행되었습니다.
+
+3. 예산검토
+예산 편성이 적정하며 계약금액 {contract_amount}이 합리적입니다.
+
+4. 계약서검토
+계약서 주요 조항이 적절히 구성되어 있습니다.
+
+5. 최종의견
+전반적으로 적정하게 진행되었습니다.
+"""
+                document.add_paragraph("검토의견:")
+                document.add_paragraph(basic_opinion)
+                
         except Exception as gpt_error:
-            logger.error(f"GPT 의견 생성 실패: {gpt_error}")
-            # 기본 의견 사용
-            audit_opinions = {
-                "사업목적검토": "제출된 자료를 검토한 결과, 사업목적이 명확하게 정의되어 있으며 추진 필요성이 인정됩니다.",
-                "업체선정검토": "업체선정 절차가 관련 규정에 따라 적절히 진행되었으나, 일부 보완이 필요한 사항이 있습니다.",
-                "예산검토": "예산 편성 및 집행계획이 적정하며, 예산 범위 내에서 계약이 체결되었습니다.",
-                "계약서검토": "계약서 주요 조항이 적절히 구성되어 있으나, 세부 조건에 대한 보완이 권장됩니다.",
-                "최종의견": "전반적으로 적정하게 진행되었으나, 향후 유사 사업 시 발견사항을 참고하여 개선하시기 바랍니다."
-            }
+            logger.error(f"GPT 처리 오류: {str(gpt_error)}")
+            # GPT 실패해도 기본 의견으로 계속 진행
+            basic_opinion = f"계약명 {contract_name}에 대한 검토 결과 전반적으로 적정합니다."
+            document.add_paragraph("검토의견:")
+            document.add_paragraph(basic_opinion)
         
-        # 7. 의견서 박스 생성
-        create_opinion_box(document, audit_opinions)
+        # 파일 저장
+        logger.info(f"파일 저장 시작: {submission_id}")
         
-        # 8. 파일 저장
         report_folder = os.path.join(base_folder, "draft_reports")
-        os.makedirs(report_folder, exist_ok=True)
+        if not os.path.exists(report_folder):
+            os.makedirs(report_folder)
         
-        # 파일명에 타임스탬프 추가로 중복 방지
         timestamp = datetime.datetime.now().strftime("%H%M%S")
-        report_path = os.path.join(report_folder, f"일상감사의견서_{submission_id}_{timestamp}.docx")
+        report_path = os.path.join(report_folder, f"간단의견서_{submission_id}_{timestamp}.docx")
         
         document.save(report_path)
+        logger.info(f"파일 저장 시도 완료: {report_path}")
         
         # 파일 생성 확인
-        if os.path.exists(report_path) and os.path.getsize(report_path) > 0:
-            logger.info(f"일상감사 양식 보고서 생성 완료: {report_path}")
-            return report_path
+        if os.path.exists(report_path):
+            file_size = os.path.getsize(report_path)
+            logger.info(f"파일 생성 확인: 크기 {file_size} bytes")
+            
+            if file_size > 0:
+                logger.info(f"최소 코드 의견서 생성 성공: {report_path}")
+                return report_path
+            else:
+                logger.error(f"파일 크기가 0: {report_path}")
+                return None
         else:
-            logger.error(f"보고서 파일 생성 실패: {report_path}")
+            logger.error(f"파일이 생성되지 않음: {report_path}")
             return None
             
     except Exception as e:
-        logger.error(f"원래 양식 기반 의견서 생성 오류: {str(e)}")
-        import traceback
-        logger.error(f"상세 오류: {traceback.format_exc()}")
+        logger.error(f"최소 코드 의견서 생성 오류: {str(e)}")
+        # 가장 기본적인 에러 정보만 로깅
+        try:
+            import traceback
+            logger.error(f"오류 상세: {traceback.format_exc()}")
+        except:
+            logger.error("오류 상세 정보 수집 실패")
         return None
 
 def create_title_and_signature_table(document):
