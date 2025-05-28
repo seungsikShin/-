@@ -1559,7 +1559,7 @@ elif st.session_state["page"] == "접수 완료":
     st.title("✅ 일상감사 접수 완료")
 
     # ─── DB에서 접수 정보 불러오기 ───
-    submission_id = st.session_state["submission_id"]  # ← sub_id를 submission_id로 변경
+    submission_id = st.session_state["submission_id"]
     conn = sqlite3.connect('audit_system.db')
     c = conn.cursor()
 
@@ -1569,12 +1569,12 @@ elif st.session_state["page"] == "접수 완료":
                company_name, budget_item, contract_method
         FROM submissions
         WHERE submission_id = ?
-    """, (submission_id,))  # ← sub_id를 submission_id로 변경
+    """, (submission_id,))
 
     result = c.fetchone()
     if result:
         department, manager, phone, contract_name, contract_period, contract_amount, company_name, budget_item, contract_method = result
-    
+
         # None 값들을 빈 문자열로 처리
         department = department or ""
         manager = manager or ""
@@ -1584,7 +1584,7 @@ elif st.session_state["page"] == "접수 완료":
         company_name = company_name or ""
         budget_item = budget_item or ""
         contract_method = contract_method or ""
-        
+
         # ✅ contract_amount_formatted 변수 정의 개선
         if contract_amount:
             try:
@@ -1599,7 +1599,7 @@ elif st.session_state["page"] == "접수 완료":
                 contract_amount_formatted = str(contract_amount) if contract_amount else "0원"
         else:
             contract_amount_formatted = "0원"
-    
+
     else:
         st.error("접수 정보를 찾을 수 없습니다. 파일 업로드 페이지에서 접수 정보를 먼저 입력해주세요.")
         # 모든 변수를 빈 문자열로 초기화
@@ -1607,7 +1607,7 @@ elif st.session_state["page"] == "접수 완료":
         company_name = budget_item = contract_method = ""
         contract_amount_formatted = "0원"
 
-    conn.close()  # ← 연결 종료 추가
+    # ✅ 여기서는 연결을 닫지 말고 계속 사용
 
     # 접수 내용 요약
     st.markdown("### 접수 내용 요약")
@@ -1616,7 +1616,7 @@ elif st.session_state["page"] == "접수 완료":
     uploaded_file_list = []
     c.execute(
         "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?",
-        (submission_id,)  # ← sub_id를 submission_id로 변경
+        (submission_id,)
     )
     uploaded_db_files = c.fetchall()
 
@@ -1629,10 +1629,10 @@ elif st.session_state["page"] == "접수 완료":
     # 누락된 파일 및 사유
     c.execute(
         "SELECT file_name, reason FROM missing_file_reasons WHERE submission_id = ?",
-        (submission_id,)  # ← sub_id를 submission_id로 변경
+        (submission_id,)
     )
     missing_db_files = c.fetchall()
-    
+
     if missing_db_files:
         st.markdown("#### 누락된 파일 및 사유")
         for file_name, reason in missing_db_files:
@@ -1642,19 +1642,23 @@ elif st.session_state["page"] == "접수 완료":
     incomplete_files = []
     for req_file in required_files:
         # 업로드 파일 확인
-        c.execute("SELECT COUNT(*) FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
-                  (submission_id, f"%{req_file}%"))  # ← sub_id를 submission_id로 변경
+        c.execute("SELECT COUNT(*) FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?",
+                  (submission_id, f"%{req_file}%"))
         file_count = c.fetchone()[0]
-        
+
         # 사유 제공 확인
-        c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
-                  (submission_id, req_file))  # ← sub_id를 submission_id로 변경
+        c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?",
+                  (submission_id, req_file))
         reason_count = c.fetchone()[0]
         if file_count == 0 and reason_count == 0:
             incomplete_files.append(req_file)
+
     current_missing_files = incomplete_files
 
-# 이메일 발송 섹션
+    # ✅ 모든 DB 작업이 끝난 후에 연결 종료
+    conn.close()
+
+    # 이메일 발송 섹션
     st.markdown("### 이메일 발송")
     recipient_email = st.text_input("수신자 이메일 주소", value=to_email)
     report_recipient_email = st.text_input(
