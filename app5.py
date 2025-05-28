@@ -828,31 +828,66 @@ elif st.session_state["page"] == "파일 업로드":
         st.markdown(f"### {idx+1}. {file}")
         col1, col2 = st.columns([3, 1])
         
-        # 파일 유형 별 DB에 업로드됐는지 확인
+        # 파일 유형 별 DB에 업로드됐는지 확인 (file_name, file_path 모두 조회)
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
-        c.execute("SELECT file_name FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
+        c.execute("SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
                 (submission_id, f"%{file}%"))
-        is_file_uploaded = bool(c.fetchone())
+        uploaded_row = c.fetchone()
         
         # 사유 입력됐는지 확인
         c.execute("SELECT reason FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
                 (submission_id, file))
-        reason_record = c.fetchone()
+        reason_row = c.fetchone()
         conn.close()
         
-        # 이미 업로드된 파일이면 메시지만 표시
-        if is_file_uploaded:
-            st.success(f"✅ {file} 업로드 완료됨")
+        # --------------------- 파일 업로드/사유 각각에 삭제 버튼 추가 ---------------------
+        if uploaded_row:
             uploaded_count += 1
+            file_name, file_path = uploaded_row
+
+            col_a, col_b = st.columns([4,1])
+            with col_a:
+                st.success(f"✅ {file} 업로드 완료됨: {file_name}")
+            with col_b:
+                if st.button(f"{file} 파일 삭제", key=f"delete_file_{file}"):
+                    try:
+                        # DB에서 삭제
+                        conn = sqlite3.connect('audit_system.db')
+                        c = conn.cursor()
+                        c.execute("DELETE FROM uploaded_files WHERE submission_id = ? AND file_name = ?", 
+                                  (submission_id, file_name))
+                        conn.commit()
+                        conn.close()
+                        # 파일도 삭제 (실제 존재할 때만)
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                        st.success(f"{file} 파일이 삭제되었습니다.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"{file} 삭제 중 오류: {str(e)}")
             continue
-        
-        # 이미 사유가 있는 경우 표시
-        if reason_record:
-            st.info(f"📝 {file}: {reason_record[0]}")
+
+        if reason_row:
             uploaded_count += 1
+            col_a, col_b = st.columns([4,1])
+            with col_a:
+                st.info(f"📝 {file}: {reason_row[0]}")
+            with col_b:
+                if st.button(f"{file} 사유 삭제", key=f"delete_reason_{file}"):
+                    try:
+                        conn = sqlite3.connect('audit_system.db')
+                        c = conn.cursor()
+                        c.execute("DELETE FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
+                                  (submission_id, file))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"{file} 사유가 삭제되었습니다.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"{file} 사유 삭제 중 오류: {str(e)}")
             continue
-        
+
         with col1:
             # 사용자별 고유 키 생성
             user_key = st.session_state["cookie_session_id"]
