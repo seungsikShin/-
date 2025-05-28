@@ -1730,12 +1730,58 @@ elif st.session_state["page"] == "접수 완료":
             # 첨부 파일 안내 추가
             if zip_file_path:
                 body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
-            # ✅ 일상감사 의견서 생성 및 첨부 (안전한 버전)
+            # ✅ 일상감사 의견서 생성 및 첨부 (상세 디버깅 버전)
             report_generated = False
             report_path = None
 
+            st.write("🔍 **디버깅 정보 시작**")
+
+            # 1. 전달할 매개변수들 확인
+            debug_params = {
+                "submission_id": submission_id,
+                "department": department,
+                "manager": manager,
+                "phone": phone,
+                "contract_name": contract_name,
+                "contract_period": contract_period,
+                "contract_amount": contract_amount_formatted,
+                "company_name": company_name,
+                "budget_item": budget_item,
+                "contract_method": contract_method
+            }
+
+            st.json(debug_params)
+            st.write(f"업로드된 파일 수: {len([f for f, _ in uploaded_db_files])}")
+            st.write(f"누락 파일 수: {len([(f, r) for f, r in missing_db_files])}")
+
             with st.spinner("📄 일상감사 의견서 생성 중..."):
                 try:
+                    st.write("✓ 보고서 생성 함수 호출 시작")
+                    
+                    # 간단한 테스트용 Word 문서 생성 먼저 시도
+                    try:
+                        from docx import Document
+                        test_doc = Document()
+                        test_doc.add_heading('테스트 문서', 0)
+                        test_doc.add_paragraph('이것은 테스트 문단입니다.')
+                        
+                        test_folder = os.path.join(base_folder, "test_reports")
+                        os.makedirs(test_folder, exist_ok=True)
+                        test_path = os.path.join(test_folder, f"테스트_{submission_id}.docx")
+                        test_doc.save(test_path)
+                        
+                        if os.path.exists(test_path) and os.path.getsize(test_path) > 0:
+                            st.success("✓ Word 문서 기본 생성 테스트 성공")
+                            os.remove(test_path)  # 테스트 파일 삭제
+                        else:
+                            st.error("❌ Word 문서 기본 생성 테스트 실패")
+                        
+                    except Exception as test_error:
+                        st.error(f"❌ Word 문서 테스트 오류: {str(test_error)}")
+                    
+                    st.write("✓ 실제 보고서 생성 시작")
+                    
+                    # 실제 보고서 생성
                     report_path = generate_audit_report_exact_format(
                         submission_id=submission_id,
                         department=department,
@@ -1751,26 +1797,47 @@ elif st.session_state["page"] == "접수 완료":
                         contract_method=contract_method
                     )
                     
-                    if report_path and os.path.exists(report_path):
-                        file_size = os.path.getsize(report_path)
-                        if file_size > 0:
-                            email_attachments.append(report_path)
-                            body += "* 일상감사 의견서가 첨부되어 있습니다.\n"
-                            report_generated = True
-                            st.success(f"✅ 일상감사 의견서 생성 완료 ({file_size:,} bytes)")
-                        else:
-                            st.warning("⚠️ 의견서 파일이 비어있습니다.")
-                    else:
-                        st.warning("⚠️ 일상감사 의견서 생성 실패")
+                    st.write(f"✓ 함수 실행 완료. 반환값: {report_path}")
+                    
+                    if report_path:
+                        st.write(f"✓ 파일 경로 반환됨: {report_path}")
                         
+                        if os.path.exists(report_path):
+                            file_size = os.path.getsize(report_path)
+                            st.write(f"✓ 파일 존재 확인. 크기: {file_size} bytes")
+                            
+                            if file_size > 0:
+                                email_attachments.append(report_path)
+                                body += "* 일상감사 의견서가 첨부되어 있습니다.\n"
+                                report_generated = True
+                                st.success(f"✅ 일상감사 의견서 생성 완료 ({file_size:,} bytes)")
+                                
+                                # 파일 다운로드 버튼으로 확인
+                                with open(report_path, "rb") as file:
+                                    st.download_button(
+                                        label="🔍 생성된 의견서 확인 (다운로드)",
+                                        data=file.read(),
+                                        file_name=f"디버그_의견서_{submission_id}.docx",
+                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                    )
+                            else:
+                                st.error("❌ 파일이 생성되었지만 크기가 0입니다.")
+                        else:
+                            st.error(f"❌ 파일이 생성되지 않았습니다: {report_path}")
+                    else:
+                        st.error("❌ 함수에서 None 반환됨")
+                    
                 except Exception as e:
                     st.error(f"❌ 의견서 생성 중 오류: {str(e)}")
-                    logger.error(f"의견서 생성 오류: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
 
             # 의견서 생성 실패시 알림
             if not report_generated:
                 body += "* 일상감사 의견서 생성에 실패했습니다. 업로드된 파일만 첨부됩니다.\n"
                 st.info("📝 의견서 없이 파일만 발송됩니다.")
+
+            st.write("🔍 **디버깅 정보 종료**")
 
             # 첨부 파일 최종 확인
             st.write(f"📎 **첨부 파일 목록** ({len(email_attachments)}개):")
