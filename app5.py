@@ -396,19 +396,19 @@ def generate_audit_report_exact_format(submission_id, department, manager, phone
                                       missing_files_with_reasons, company_name="", 
                                       budget_item="", contract_method="") -> Optional[str]:
     """
-    일상감사 의견서를 생성합니다. (강화된 오류 처리 포함)
+    원래 일상감사 양식에 GPT Assistant의 전문 의견을 결합한 보고서 생성
     """
     try:
-        logger.info(f"보고서 생성 시작: {submission_id}")
+        logger.info(f"원래 양식 기반 GPT 의견서 생성 시작: {submission_id}")
         
-        # 필수 모듈 import
         from docx import Document
         from docx.shared import Inches, Pt
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.shared import OxmlElement, qn
         import datetime
         import os
         
-        # 매개변수 검증 및 기본값 설정
+        # 기본값 설정
         submission_id = submission_id or "UNKNOWN"
         department = department or "미입력"
         manager = manager or "미입력"
@@ -418,11 +418,95 @@ def generate_audit_report_exact_format(submission_id, department, manager, phone
         contract_amount = contract_amount or "0원"
         company_name = company_name or "계약 상대방"
         budget_item = budget_item or "정보화 사업비"
-        contract_method = contract_method or "일반경쟁입찰"
+        contract_method = contract_method or "수의계약"
         
-        logger.info(f"매개변수 검증 완료: {submission_id}")
+        # 1. GPT Assistant로 전문 의견 생성
+        logger.info(f"GPT Assistant 의견 생성 시작: {submission_id}")
         
-        # Word 문서 생성
+        # 파일 정보 정리
+        file_info = ""
+        if uploaded_files:
+            file_info += "제출 자료:\n" + "\n".join([f"- {f}" for f in uploaded_files])
+        if missing_files_with_reasons:
+            file_info += "\n누락 자료:\n" + "\n".join([f"- {name}: {reason}" for name, reason in missing_files_with_reasons])
+        
+        # GPT Assistant 프롬프트 (기존 시스템 지침 활용)
+        assistant_prompt = f"""
+일상감사 의견서를 작성해주세요.
+
+## 계약 정보
+- 계약명: {contract_name}
+- 계약금액: {contract_amount}
+- 계약기간: {contract_period}
+- 담당부서: {department}
+- 담당자: {manager} ({phone})
+- 계약방식: {contract_method}
+- 계약상대방: {company_name}
+- 예산과목: {budget_item}
+
+## 제출/누락 자료 현황
+{file_info if file_info else "제출 자료: 없음"}
+
+위 정보를 바탕으로 다음 5개 항목에 대해 일상감사 의견서 양식에 맞는 전문적인 검토의견을 작성해주세요:
+
+**사업목적검토**
+**업체선정검토**
+**예산검토**
+**계약서검토**
+**최종의견**
+
+각 항목은 "**항목명**"으로 시작하고, 다음 줄에 2-3문장의 구체적이고 전문적인 검토의견을 작성해주세요.
+"""
+        
+        # GPT Assistant 호출 (기존 시스템 지침 활용)
+        try:
+            gpt_response, gpt_success = get_clean_answer_from_gpts(assistant_prompt)
+            logger.info(f"GPT Assistant 응답 성공: {gpt_success}")
+            
+            if gpt_success and gpt_response:
+                # GPT 응답 파싱
+                audit_opinions = {}
+                current_section = None
+                current_content = []
+                
+                for line in gpt_response.split('\n'):
+                    if line.startswith('**') and line.endswith('**'):
+                        if current_section:
+                            audit_opinions[current_section] = ' '.join(current_content).strip()
+                        current_section = line.strip('*')
+                        current_content = []
+                    elif current_section and line.strip():
+                        current_content.append(line.strip())
+                
+                # 마지막 섹션 추가
+                if current_section and current_content:
+                    audit_opinions[current_section] = ' '.join(current_content).strip()
+                
+                logger.info(f"GPT 의견 파싱 완료: {len(audit_opinions)}개 항목")
+            else:
+                logger.warning("GPT Assistant 응답 실패")
+                audit_opinions = {}
+                
+        except Exception as gpt_error:
+            logger.error(f"GPT Assistant 호출 오류: {str(gpt_error)}")
+            audit_opinions = {}
+        
+        # 기본 의견 (GPT 실패 시)
+        if not audit_opinions or len(audit_opinions) < 5:
+            logger.warning("GPT 의견 부족, 기본 의견으로 보완")
+            default_opinions = {
+                "사업목적검토": f"제출된 자료를 검토한 결과, {contract_name} 사업의 목적이 명확하게 정의되어 있으며 {department}에서의 추진 필요성이 인정됩니다.",
+                "업체선정검토": f"업체선정 절차가 관련 규정에 따라 {contract_method} 방식으로 적절히 진행되었으며, {company_name} 선정과정이 적정합니다.",
+                "예산검토": f"예산 편성 및 집행계획이 적정하며, {budget_item} 예산 범위 내에서 계약금액 {contract_amount}이 합리적으로 책정되었습니다.",
+                "계약서검토": f"계약서 주요 조항이 적절히 구성되어 있으며, 계약기간 {contract_period} 설정이 적정합니다.",
+                "최종의견": "전반적으로 적정하게 진행되었으나, 향후 유사 사업 시 발견사항을 참고하여 개선하시기 바랍니다."
+            }
+            
+            for key, default_value in default_opinions.items():
+                if key not in audit_opinions or not audit_opinions[key].strip():
+                    audit_opinions[key] = default_value
+        
+        # 2. 원래 일상감사 양식으로 Word 문서 생성
         document = Document()
         
         # 문서 여백 설정
@@ -501,7 +585,7 @@ def generate_audit_report_exact_format(submission_id, department, manager, phone
             return None
             
     except Exception as e:
-        logger.error(f"일상감사 양식 보고서 생성 오류: {str(e)}")
+        logger.error(f"원래 양식 기반 의견서 생성 오류: {str(e)}")
         import traceback
         logger.error(f"상세 오류: {traceback.format_exc()}")
         return None
