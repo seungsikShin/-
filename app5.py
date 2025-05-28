@@ -411,9 +411,7 @@ def generate_audit_report_with_file_content(submission_id, department, manager, 
                 if result and os.path.exists(result[0]):
                     file_content = extract_file_content(result[0])
                     uploaded_content += f"### 📄 {file_name}\n"
-                    uploaded_content += f"**파일 내용:**\n```
-{file_content}\n```
-\n"
+                    uploaded_content += f"**파일 내용:**\n```\n{file_content}\n```\n\n"
                 else:
                     uploaded_content += f"### 📄 {file_name}\n**상태:** 파일 내용 읽기 실패\n\n"
             
