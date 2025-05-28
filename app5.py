@@ -5,6 +5,35 @@ st.set_page_config(
     page_icon="📋",
     layout="wide",
 )
+
+st.markdown("""
+<style>
+.tooltip {
+    position: relative;
+    display: inline-block;
+}
+
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 200px;
+    background-color: #555;
+    color: white;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -100px;
+}
+
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+}
+</style>
+""", unsafe_allow_html=True)
+
 from dotenv import load_dotenv  
 load_dotenv()
 
@@ -389,378 +418,104 @@ def generate_audit_report_with_gpt_enhanced(submission_id, department, manager, 
         logger.error(f"GPT 보고서 생성 오류: {str(e)}")
         return None
 
-# 정확한 일상감사 양식으로 보고서 생성
+# 최적화된 GPT 감사보고서 생성 함수
 
-def generate_audit_report_exact_format(submission_id, department, manager, phone, contract_name,
-                                      contract_period, contract_amount, uploaded_files, 
-                                      missing_files_with_reasons, company_name="", 
-                                      budget_item="", contract_method="") -> Optional[str]:
-    """
-    최소한의 코드로 확실히 작동하는 의견서 생성
-    """
+def generate_audit_report_with_file_content(submission_id, department, manager, phone, contract_name,
+                                           contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
     try:
-        logger.info(f"최소 코드 의견서 생성 시작: {submission_id}")
-        
-        # 1. 기본 모듈만 import
-        from docx import Document
-        import datetime
-        import os
-        
-        # 2. 기본값 설정
-        submission_id = str(submission_id) if submission_id else "UNKNOWN"
-        department = str(department) if department else "미입력"
-        contract_name = str(contract_name) if contract_name else "미입력"
-        contract_amount = str(contract_amount) if contract_amount else "0원"
-        
-        logger.info(f"기본값 설정 완료: {submission_id}")
-        
-        # 3. 가장 단순한 Word 문서 생성
-        document = Document()
-        
-        # 제목
-        document.add_heading('일상감사 의견서', 0)
-        document.add_paragraph(f"({datetime.datetime.now().strftime('%Y. %m. %d.')})")
-        document.add_paragraph()
-        
-        # 기본 정보
-        document.add_paragraph("OKH 감사팀")
-        document.add_paragraph()
-        
-        # 사업개요
-        document.add_heading('- 사업개요', level=2)
-        document.add_paragraph(f"사업명: {contract_name}")
-        document.add_paragraph(f"주관부서: {department}")
-        document.add_paragraph(f"계약금액: {contract_amount}")
-        document.add_paragraph()
-        
-        # 검토의견
-        document.add_paragraph("- 검토의견 : 적정( V ), 일부 부적정(  ), 부적정(  )")
-        document.add_paragraph()
-        
-        # GPT 의견 시도
-        logger.info(f"GPT 의견 생성 시도: {submission_id}")
-        
-        try:
-            # 매우 간단한 GPT 프롬프트
-            simple_prompt = f"""
-일상감사 의견서를 작성해주세요.
-
-계약명: {contract_name}
-담당부서: {department}
-계약금액: {contract_amount}
-
-다음 5개 항목에 대해 간단한 검토의견을 작성해주세요:
-1. 사업목적검토
-2. 업체선정검토
-3. 예산검토
-4. 계약서검토
-5. 최종의견
-
-각 항목당 1-2문장으로 작성해주세요.
-"""
+        # 제출 자료의 실제 내용 추출
+        uploaded_content = ""
+        if uploaded_files:
+            uploaded_content = "## 제출된 자료 및 실제 내용\n\n"
             
-            gpt_response, gpt_success = get_clean_answer_from_gpts(simple_prompt)
+            # DB에서 실제 파일 경로 가져오기
+            conn = sqlite3.connect('audit_system.db')
+            c = conn.cursor()
             
-            if gpt_success and gpt_response:
-                logger.info(f"GPT 응답 성공: {len(gpt_response)}자")
-                document.add_paragraph("검토의견:")
-                document.add_paragraph(gpt_response)
-            else:
-                logger.warning("GPT 응답 실패, 기본 의견 사용")
-                basic_opinion = f"""
-1. 사업목적검토
-{contract_name} 사업의 목적이 적절하게 설정되어 있습니다.
-
-2. 업체선정검토
-업체선정 절차가 관련 규정에 따라 진행되었습니다.
-
-3. 예산검토
-예산 편성이 적정하며 계약금액 {contract_amount}이 합리적입니다.
-
-4. 계약서검토
-계약서 주요 조항이 적절히 구성되어 있습니다.
-
-5. 최종의견
-전반적으로 적정하게 진행되었습니다.
-"""
-                document.add_paragraph("검토의견:")
-                document.add_paragraph(basic_opinion)
+            for file_name in uploaded_files:
+                c.execute("SELECT file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
+                         (submission_id, f"%{file_name.split(' - ')[0]}%"))
+                result = c.fetchone()
                 
-        except Exception as gpt_error:
-            logger.error(f"GPT 처리 오류: {str(gpt_error)}")
-            # GPT 실패해도 기본 의견으로 계속 진행
-            basic_opinion = f"계약명 {contract_name}에 대한 검토 결과 전반적으로 적정합니다."
-            document.add_paragraph("검토의견:")
-            document.add_paragraph(basic_opinion)
-        
-        # 파일 저장
-        logger.info(f"파일 저장 시작: {submission_id}")
-        
-        report_folder = os.path.join(base_folder, "draft_reports")
-        if not os.path.exists(report_folder):
-            os.makedirs(report_folder)
-        
-        timestamp = datetime.datetime.now().strftime("%H%M%S")
-        report_path = os.path.join(report_folder, f"간단의견서_{submission_id}_{timestamp}.docx")
-        
-        document.save(report_path)
-        logger.info(f"파일 저장 시도 완료: {report_path}")
-        
-        # 파일 생성 확인
-        if os.path.exists(report_path):
-            file_size = os.path.getsize(report_path)
-            logger.info(f"파일 생성 확인: 크기 {file_size} bytes")
+                if result and os.path.exists(result[0]):
+                    file_content = extract_file_content(result[0])
+                    uploaded_content += f"### 📄 {file_name}\n"
+                    uploaded_content += f"**파일 내용:**\n```
+{file_content}\n```
+\n"
+                else:
+                    uploaded_content += f"### 📄 {file_name}\n**상태:** 파일 내용 읽기 실패\n\n"
             
-            if file_size > 0:
-                logger.info(f"최소 코드 의견서 생성 성공: {report_path}")
-                return report_path
-            else:
-                logger.error(f"파일 크기가 0: {report_path}")
-                return None
+            conn.close()
         else:
-            logger.error(f"파일이 생성되지 않음: {report_path}")
-            return None
-            
-    except Exception as e:
-        logger.error(f"최소 코드 의견서 생성 오류: {str(e)}")
-        # 가장 기본적인 에러 정보만 로깅
-        try:
-            import traceback
-            logger.error(f"오류 상세: {traceback.format_exc()}")
-        except:
-            logger.error("오류 상세 정보 수집 실패")
-        return None
+            uploaded_content = "제출된 자료: 없음\n\n"
+        
+        # 누락 자료 정리
+        missing_content = ""
+        if missing_files_with_reasons:
+            missing_content = "## 누락된 자료 및 사유\n\n"
+            missing_content += "\n".join([f"- **{name}**: {reason}" for name, reason in missing_files_with_reasons])
+        else:
+            missing_content = "누락된 자료: 없음\n\n"
+        
+        # 실제 파일 내용을 포함한 프롬프트
+        user_message = f"""
+일상감사 보고서 초안을 작성해주세요.
 
-def create_title_and_signature_table(document):
-    import datetime
-    from docx.shared import Pt
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.oxml.shared import OxmlElement, qn
-    # 제목과 서명란 통합 테이블 (2행 5열)
-    title_table = document.add_table(rows=2, cols=5)
-    title_table.autofit = False
-    # 첫 번째 행: 제목과 서명란 헤더
-    title_cells = title_table.rows[0].cells
-    # 제목 셀 (첫 번째 셀을 크게)
-    title_cell = title_cells[0]
-    title_cell.text = f"일상감사 의견서\n\n({datetime.datetime.now().strftime('%Y. %m. %d.')})"
-    title_cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if len(title_cell.paragraphs) > 1:
-        title_cell.paragraphs[1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    # 제목 폰트 스타일링
-    for paragraph in title_cell.paragraphs:
-        for run in paragraph.runs:
-            run.font.name = "맑은 고딕"
-            run.font.size = Pt(14)
-            run.bold = True
-    # 서명란 헤더
-    signature_headers = ["담당", "팀장", "부장", "감사"]
-    for i, header in enumerate(signature_headers, 1):
-        cell = title_cells[i]
-        cell.text = header
-        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        for run in cell.paragraphs[0].runs:
-            run.font.name = "맑은 고딕"
-            run.font.size = Pt(11)
-            run.bold = True
-    # 두 번째 행: 빈 서명 공간
-    signature_cells = title_table.rows[1].cells
-    signature_cells[0].text = ""  # 제목 아래는 빈 공간
-    for i in range(1, 5):
-        signature_cells[i].text = ""  # 서명 공간
-        # 서명 칸 높이 설정
-        signature_cells[i]._tc.set('w:h', '400')
-    # 테이블 전체에 테두리 설정
-    set_table_borders(title_table)
-    document.add_paragraph()
+## 계약 기본 정보
+**접수 ID**: {submission_id}
+**접수 부서**: {department}  
+**담당자**: {manager} (연락처: {phone})
+**계약명**: {contract_name}
+**계약 체결일**: {contract_date}
+**계약금액**: {contract_amount}
 
-def create_project_overview_table(document, project_data):
-    """사업개요 표 생성"""
-    # 사업개요 제목
-    overview_para = document.add_paragraph("- 사업개요")
-    overview_para.runs[0].font.name = "맑은 고딕"
-    overview_para.runs[0].font.size = Pt(11)
-    overview_para.runs[0].bold = True
-    # 사업개요 표 (3행 4열)
-    overview_table = document.add_table(rows=3, cols=4)
-    overview_table.style = 'Table Grid'
-    # 표 데이터 배치 (실제 입력값 사용)
-    table_data = [
-        [project_data.get('사업명', ''), "", project_data.get('주관부서', ''), ""],
-        [project_data.get('업체명', ''), "", project_data.get('계약기간', ''), ""],
-        [project_data.get('예산과목', ''), "", project_data.get('계약금액', ''), ""]
-    ]
-    # 첫 번째와 세 번째 열에 데이터 입력
-    for row_idx, row_data in enumerate(table_data):
-        cells = overview_table.rows[row_idx].cells
-        cells[0].text = row_data[0]  # 사업명/업체명/예산과목
-        cells[2].text = row_data[2]  # 주관부서/계약기간/계약금액
-        # 셀 병합 (각 데이터가 2개 셀을 차지)
-        try:
-            merge_cells(cells[0], cells[1])
-            merge_cells(cells[2], cells[3])
-        except:
-            pass
-        # 폰트 설정
-        for cell in [cells[0], cells[2]]:
-            for paragraph in cell.paragraphs:
-                for run in paragraph.runs:
-                    run.font.name = "맑은 고딕"
-                    run.font.size = Pt(10)
-    document.add_paragraph()
+{uploaded_content}
 
-def create_selection_procedure_table(document, uploaded_files, missing_files_with_reasons, contract_method=""):
-    from docx.shared import Pt
-    # 업체 선정절차 제목
-    procedure_para = document.add_paragraph("- 업체 선정절차")
-    procedure_para.runs[0].font.name = "맑은 고딕"
-    procedure_para.runs[0].font.size = Pt(11)
-    procedure_para.runs[0].bold = True
-    # 업체 선정절차 표 (3행 2열)
-    procedure_table = document.add_table(rows=3, cols=2)
-    procedure_table.style = 'Table Grid'
-    # 표 데이터 (실제 입력값 활용)
-    procedure_data = [
-        ("계약방식", contract_method or extract_contract_method_from_files(uploaded_files)),
-        ("참여업체", extract_participating_companies_from_files(uploaded_files)),
-        ("선정기준", extract_selection_criteria_from_files(uploaded_files))
-    ]
-    for row_idx, (label, content) in enumerate(procedure_data):
-        cells = procedure_table.rows[row_idx].cells
-        cells[0].text = label
-        cells[1].text = content
-        # 첫 번째 열 폰트 (라벨)
-        for run in cells[0].paragraphs[0].runs:
-            run.font.name = "맑은 고딕"
-            run.font.size = Pt(10)
-            run.bold = True
-        # 두 번째 열 폰트 (내용)
-        for run in cells[1].paragraphs[0].runs:
-            run.font.name = "맑은 고딕"
-            run.font.size = Pt(10)
-    document.add_paragraph()
+{missing_content}
 
-def create_review_opinion_checkbox(document):
-    from docx.shared import Pt
-    opinion_para = document.add_paragraph("- 검토의견 : 적정( V ), 일부 부적정(  ), 부적정(  )")
-    opinion_para.runs[0].font.name = "맑은 고딕"
-    opinion_para.runs[0].font.size = Pt(11)
-    document.add_paragraph()
-
-def create_opinion_box(document, opinions):
-    from docx.shared import Pt
-    # 의견서 테이블 (1행 1열의 큰 박스)
-    opinion_table = document.add_table(rows=1, cols=1)
-    opinion_table.style = 'Table Grid'
-    # 의견 내용 구성
-    opinion_text = ""
-    for i, (section, content) in enumerate(opinions.items(), 1):
-        opinion_text += f"{i}. {section}\n\n{content}\n\n"
-    # 테이블 셀에 의견 내용 추가
-    cell = opinion_table.cell(0, 0)
-    cell.text = opinion_text.strip()
-    # 셀 크기 설정 (충분한 높이)
-    cell._tc.set('w:h', '3000')  # 높이 설정
-    # 셀 내용 폰트 설정
-    for paragraph in cell.paragraphs:
-        for run in paragraph.runs:
-            run.font.name = "맑은 고딕"
-            run.font.size = Pt(10)
-
-def generate_structured_opinions(submission_id, department, manager, phone, contract_name,
-                               contract_date, contract_amount, uploaded_files, missing_files_with_reasons):
-    # 파일 정보 정리
-    file_info = ""
-    if uploaded_files:
-        file_info += "제출 자료:\n" + "\n".join([f"- {f}" for f in uploaded_files])
-    if missing_files_with_reasons:
-        file_info += "\n누락 자료:\n" + "\n".join([f"- {name}: {reason}" for name, reason in missing_files_with_reasons])
-    # GPT 프롬프트 (정확한 5개 항목으로)
-    prompt = f"""
-다음 일상감사 건에 대해 정확히 5개 항목의 검토의견을 작성해주세요:
-
-계약 정보:
-- 계약명: {contract_name}
-- 계약금액: {contract_amount} 
-- 계약일: {contract_date}
-- 담당부서: {department}
-
-{file_info}
-
-다음 5개 항목에 대해 각각 2-3문장의 전문적인 검토의견을 작성해주세요:
-
-**사업목적검토**
-**업체선정검토** 
-**예산검토**
-**계약서검토**
-**최종의견**
-
-각 항목은 "**항목명**"으로 시작하고, 다음 줄에 검토의견을 작성해주세요.
-일상감사 의견서 양식에 맞는 전문적이고 간결한 문체로 작성해주세요.
+위의 실제 문서 내용을 분석하여 전문적인 일상감사 보고서 초안을 작성해주세요.
+특히 제출된 문서의 구체적인 내용을 인용하고 분석하여 실질적인 검토 의견을 제시해주세요.
 """
-    response, success = get_clean_answer_from_gpts(prompt)
-    if not success:
-        # 기본 의견 반환
-        return {
-            "사업목적검토": "제출된 자료를 검토한 결과, 사업목적이 명확하게 정의되어 있으며 추진 필요성이 인정됩니다.",
-            "업체선정검토": "업체선정 절차가 관련 규정에 따라 적절히 진행되었으나, 일부 보완이 필요한 사항이 있습니다.",
-            "예산검토": "예산 편성 및 집행계획이 적정하며, 예산 범위 내에서 계약이 체결되었습니다.",
-            "계약서검토": "계약서 주요 조항이 적절히 구성되어 있으나, 세부 조건에 대한 보완이 권장됩니다.",
-            "최종의견": "전반적으로 적정하게 진행되었으나, 향후 유사 사업 시 발견사항을 참고하여 개선하시기 바랍니다."
-        }
-    # 응답 파싱
-    opinions = {}
-    current_section = None
-    current_content = []
-    for line in response.split('\n'):
-        if line.startswith('**') and line.endswith('**'):
-            if current_section:
-                opinions[current_section] = ' '.join(current_content).strip()
-            current_section = line.strip('*')
-            current_content = []
-        elif current_section and line.strip():
-            current_content.append(line.strip())
-    # 마지막 섹션 추가
-    if current_section and current_content:
-        opinions[current_section] = ' '.join(current_content).strip()
-    return opinions
+        
+        # GPT 응답 받기
+        answer, success = get_clean_answer_from_gpts(user_message)
+        if not success:
+            return None
 
-def extract_company_name_from_files(uploaded_files):
-    return "계약 상대방"  # 기본값
+        # 인용 마크 및 볼드 콜론 패턴 제거
+        answer = re.sub(r'\【.*?\】', '', answer)
+        answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)
+        
+        # Word 문서 생성
+        document = Document()
+        document.add_heading('일상감사 보고서 초안', level=0)
+        
+        # 보고서 내용을 적절한 형식으로 변환
+        for line in answer.strip().split("\n"):
+            if line.strip().startswith("# "):
+                document.add_heading(line.replace("# ", "").strip(), level=1)
+            elif line.strip().startswith("## "):
+                document.add_heading(line.replace("## ", "").strip(), level=2)
+            elif line.strip().startswith("### "):
+                document.add_heading(line.replace("### ", "").strip(), level=3)
+            elif line.strip().startswith("- ") or line.strip().startswith("* "):
+                p = document.add_paragraph()
+                p.style = 'List Bullet'
+                p.add_run(line.strip()[2:])
+            else:
+                if line.strip():
+                    document.add_paragraph(line.strip())
 
-def extract_contract_method_from_files(uploaded_files):
-    return "일반경쟁입찰"  # 기본값
+        report_folder = os.path.join(base_folder, "draft_reports")
+        os.makedirs(report_folder, exist_ok=True)
+        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
+        document.save(report_path)
+        return report_path
 
-def extract_participating_companies_from_files(uploaded_files):
-    return "입찰공고 확인"  # 기본값
-
-def extract_selection_criteria_from_files(uploaded_files):
-    return "최저가격 낙찰"  # 기본값
-
-def merge_cells(cell1, cell2):
-    try:
-        cell1.merge(cell2)
-    except:
-        pass  # 병합 실패시 무시
-
-def set_table_borders(table):
-    from docx.oxml.shared import OxmlElement, qn
-    try:
-        for row in table.rows:
-            for cell in row.cells:
-                tc = cell._tc
-                tcPr = tc.get_or_add_tcPr()
-                borders = OxmlElement('w:tcBorders')
-                for border_name in ['top', 'left', 'bottom', 'right']:
-                    border = OxmlElement(f'w:{border_name}')
-                    border.set(qn('w:val'), 'single')
-                    border.set(qn('w:sz'), '4')
-                    border.set(qn('w:space'), '0')
-                    border.set(qn('w:color'), '000000')
-                    borders.append(border)
-                tcPr.append(borders)
-    except:
-        pass  # 테두리 설정 실패시 무시
+    except Exception as e:
+        logger.error(f"GPT 보고서 생성 오류: {str(e)}")
+        return None
 
 # OpenAI API 정보 (하드코딩)
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -777,6 +532,7 @@ def init_db():
     try:
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
+        
         # 접수 내역 테이블 생성 - 필요한 필드 추가
         c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
@@ -789,9 +545,6 @@ def init_db():
             contract_name TEXT,
             contract_date TEXT,
             contract_amount TEXT,
-            company_name TEXT,      -- 추가
-            budget_item TEXT,       -- 추가
-            contract_method TEXT,   -- 추가
             status TEXT,
             email_sent INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -983,7 +736,7 @@ def save_submission_with_info(submission_id, department, manager, phone, contrac
         conn.close()
         return True
     except Exception as e:
-        logger.error(f"DB 접수 상태 업데이트 오류: {str(e)}")
+        logger.error(f"DB 접수 내역 저장 오류: {str(e)}")
         return False
 
 # 데이터베이스에서 접수 내역 업데이트
@@ -1347,23 +1100,19 @@ elif st.session_state["page"] == "파일 업로드":
     </div>
     """, unsafe_allow_html=True)
 
-    # 접수 정보 입력 UI (기존 코드)
-    # ... (기존 입력 UI 코드가 여기에 위치) ...
-
     # 접수 정보 입력
-    
     st.markdown("---")
 
     # 첫 번째 행: 기본 담당자 정보
     col1, col2, col3 = st.columns(3)
     with col1:
-        department = st.text_input("📍 접수부서", key="department", 
+        department = st.text_input("📍 접수부서", key="department",
                                   placeholder="예: 정보통신팀")
     with col2:
-        manager = st.text_input("👤 담당자", key="manager", 
+        manager = st.text_input("👤 담당자", key="manager",
                                placeholder="홍길동")
     with col3:
-        phone = st.text_input("📞 전화번호", key="phone", 
+        phone = st.text_input("📞 전화번호", key="phone",
                              placeholder="02-1234-5678")
 
     st.markdown("")  # 간격
@@ -1371,10 +1120,10 @@ elif st.session_state["page"] == "파일 업로드":
     # 두 번째 행: 계약 기본 정보
     col1, col2 = st.columns(2)
     with col1:
-        contract_name = st.text_input("📄 계약명", key="contract_name", 
+        contract_name = st.text_input("📄 계약명", key="contract_name",
                                      placeholder="계약명을 입력하세요")
     with col2:
-        contract_amount_str = st.text_input("💰 계약금액", value="0", key="contract_amount", 
+        contract_amount_str = st.text_input("💰 계약금액", value="0", key="contract_amount",
                                            placeholder="1,000,000")
 
     st.markdown("")  # 간격
@@ -1392,14 +1141,14 @@ elif st.session_state["page"] == "파일 업로드":
     # 네 번째 행: 추가 정보
     col1, col2, col3 = st.columns(3)
     with col1:
-        company_name = st.text_input("🏢 계약 상대방", key="company_name", 
+        company_name = st.text_input("🏢 계약 상대방", key="company_name",
                                     placeholder="업체명")
     with col2:
-        budget_item = st.text_input("💼 예산과목", key="budget_item", 
+        budget_item = st.text_input("💼 예산과목", key="budget_item",
                                    placeholder="예: 지급수수료료")
     with col3:
-        contract_method = st.selectbox("📋 계약방식", 
-                                      ["일반경쟁입찰", "제한경쟁입찰", "지명경쟁입찰", "수의계약", "기타"], 
+        contract_method = st.selectbox("📋 계약방식",
+                                      ["일반경쟁입찰", "제한경쟁입찰", "지명경쟁입찰", "수의계약", "기타"],
                                       key="contract_method")
 
     # 계약금액 포맷팅
@@ -1409,7 +1158,7 @@ elif st.session_state["page"] == "파일 업로드":
     except ValueError:
         contract_amount_formatted = contract_amount_str
 
-    # 계약기간 문자열 생성 (DB 저장용)
+    # 계약기간 문자열 생성 (DB 저장용) -> 입력값 사용 후 DB 저장 전 또는 직전에 생성
     contract_period = ""
     if contract_start_date and contract_end_date:
         contract_period = f"{contract_start_date} ~ {contract_end_date}"
@@ -1418,8 +1167,34 @@ elif st.session_state["page"] == "파일 업로드":
     elif contract_end_date:
         contract_period = f"~ {contract_end_date}"
 
-    # 접수 ID 표시 (더 눈에 띄게)
+    # 2. 입력 완료 시 체크 표시 및 필수 필드 경고
+    if all([department, manager, phone, contract_name]):
+        st.success("✅ 기본 정보 입력 완료")
+    else:
+        required_fields = []
+        if not department: required_fields.append("접수부서")
+        if not manager: required_fields.append("담당자")
+        if not phone: required_fields.append("전화번호")
+        if not contract_name: required_fields.append("계약명")
+
+        if required_fields:
+            # 수정된 부분: f-string 내 이스케이프 오류 수정
+            # f-string 내에서 중괄호 {}와 따옴표를 함께 사용할 때 발생하는 문제입니다.
+            # join 결과를 직접 문자열로 포맷팅하여 문제를 우회합니다.
+            warning_text = f"⚠️ 필수 입력: {\', \'.join(required_fields)}"
+            st.warning(warning_text)
+
+    # 3. 진행 상태 표시
+    progress_text = "접수 정보 입력 중"
+    # 필수 4개 항목 + 계약기간 둘 중 하나라도 입력되면 접수 정보 완료로 간주
+    if all([department, manager, phone, contract_name]) and (contract_start_date or contract_end_date):
+        progress_text = "접수 정보 입력 완료 ✅"
+
+    st.caption(f"상태: {progress_text}")
+
     st.markdown("---")
+
+    # 접수 ID 표시 (더 눈에 띄게)
     if department:
         safe_dept = re.sub(r'[^\w]', '', department)[:6]
         st.session_state["submission_id"] = f"AUDIT-{upload_date}-{safe_dept}"
@@ -1427,10 +1202,8 @@ elif st.session_state["page"] == "파일 업로드":
     sid = st.session_state["submission_id"]
     st.success(f"🆔 **접수 ID**: `{sid}`")
 
-    st.markdown("---")
-
     # 접수 정보 DB 저장 (모든 변수가 정의된 후에)
-    if all([department, manager, phone, contract_name, contract_amount_str]):
+    if all([department, manager, phone, contract_name, contract_period, contract_amount_str]):
         save_submission_with_info(
             submission_id, department, manager, phone,
             contract_name, contract_period,  # contract_date → contract_period로 변경
@@ -1584,55 +1357,20 @@ elif st.session_state["page"] == "접수 완료":
     st.title("✅ 일상감사 접수 완료")
 
     # ─── DB에서 접수 정보 불러오기 ───
-    submission_id = st.session_state["submission_id"]
+    sub_id = st.session_state["submission_id"]
     conn = sqlite3.connect('audit_system.db')
     c = conn.cursor()
-
-    # 모든 필드 조회 (새로운 필드들 포함)
     c.execute("""
-        SELECT department, manager, phone, contract_name, contract_date, contract_amount,
-               company_name, budget_item, contract_method
+        SELECT department, manager, phone, contract_name, contract_date, contract_amount
         FROM submissions
         WHERE submission_id = ?
-    """, (submission_id,))
-
+    """, (sub_id,))
     result = c.fetchone()
     if result:
-        department, manager, phone, contract_name, contract_period, contract_amount, company_name, budget_item, contract_method = result
-
-        # None 값들을 빈 문자열로 처리
-        department = department or ""
-        manager = manager or ""
-        phone = phone or ""
-        contract_name = contract_name or ""
-        contract_period = contract_period or ""
-        company_name = company_name or ""
-        budget_item = budget_item or ""
-        contract_method = contract_method or ""
-
-        # ✅ contract_amount_formatted 변수 정의 개선
-        if contract_amount:
-            try:
-                # 이미 포맷된 문자열에서 숫자만 추출
-                amount_only = str(contract_amount).replace(',', '').replace('원', '').strip()
-                if amount_only:  # 빈 문자열이 아닌 경우에만
-                    amount_num = int(amount_only)
-                    contract_amount_formatted = f"{amount_num:,}원"
-                else:
-                    contract_amount_formatted = "0원"
-            except (ValueError, AttributeError):
-                contract_amount_formatted = str(contract_amount) if contract_amount else "0원"
-        else:
-            contract_amount_formatted = "0원"
-
+        department, manager, phone, contract_name, contract_date, contract_amount = result
     else:
         st.error("접수 정보를 찾을 수 없습니다. 파일 업로드 페이지에서 접수 정보를 먼저 입력해주세요.")
-        # 모든 변수를 빈 문자열로 초기화
-        department = manager = phone = contract_name = contract_period = ""
-        company_name = budget_item = contract_method = ""
-        contract_amount_formatted = "0원"
-
-    # ✅ 여기서는 연결을 닫지 말고 계속 사용
+        department, manager, phone, contract_name, contract_date, contract_amount = "", "", "", "", "", ""
 
     # 접수 내용 요약
     st.markdown("### 접수 내용 요약")
@@ -1641,7 +1379,7 @@ elif st.session_state["page"] == "접수 완료":
     uploaded_file_list = []
     c.execute(
         "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?",
-        (submission_id,)
+        (sub_id,)
     )
     uploaded_db_files = c.fetchall()
 
@@ -1654,10 +1392,10 @@ elif st.session_state["page"] == "접수 완료":
     # 누락된 파일 및 사유
     c.execute(
         "SELECT file_name, reason FROM missing_file_reasons WHERE submission_id = ?",
-        (submission_id,)
+        (sub_id,)
     )
     missing_db_files = c.fetchall()
-
+    
     if missing_db_files:
         st.markdown("#### 누락된 파일 및 사유")
         for file_name, reason in missing_db_files:
@@ -1667,23 +1405,19 @@ elif st.session_state["page"] == "접수 완료":
     incomplete_files = []
     for req_file in required_files:
         # 업로드 파일 확인
-        c.execute("SELECT COUNT(*) FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?",
-                  (submission_id, f"%{req_file}%"))
+        c.execute("SELECT COUNT(*) FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
+                  (sub_id, f"%{req_file}%"))
         file_count = c.fetchone()[0]
-
+        
         # 사유 제공 확인
-        c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?",
-                  (submission_id, req_file))
+        c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
+                  (sub_id, req_file))
         reason_count = c.fetchone()[0]
         if file_count == 0 and reason_count == 0:
             incomplete_files.append(req_file)
-
     current_missing_files = incomplete_files
 
-    # ✅ 모든 DB 작업이 끝난 후에 연결 종료
-    conn.close()
-
-    # 이메일 발송 섹션
+# 이메일 발송 섹션
     st.markdown("### 이메일 발송")
     recipient_email = st.text_input("수신자 이메일 주소", value=to_email)
     report_recipient_email = st.text_input(
@@ -1755,127 +1489,24 @@ elif st.session_state["page"] == "접수 완료":
             # 첨부 파일 안내 추가
             if zip_file_path:
                 body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
-            # ✅ 일상감사 의견서 생성 및 첨부 (상세 디버깅 버전)
-            report_generated = False
-            report_path = None
+            # ✅ [여기] GPT 보고서 생성 및 첨부 추가
+            report_path = generate_audit_report_with_file_content(
+                submission_id=submission_id,
+                department=st.session_state.get("department", ""),
+                manager=st.session_state.get("manager", ""),
+                phone=st.session_state.get("phone", ""),
+                contract_name=st.session_state.get("contract_name", ""),
+                contract_date=st.session_state.get("contract_date", ""),
+                contract_amount=st.session_state.get("contract_amount_formatted", ""),
+                uploaded_files=[f for f, _ in uploaded_db_files],
+                missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
+            )
 
-            st.write("🔍 **디버깅 정보 시작**")
-
-            # 1. 전달할 매개변수들 확인
-            debug_params = {
-                "submission_id": submission_id,
-                "department": department,
-                "manager": manager,
-                "phone": phone,
-                "contract_name": contract_name,
-                "contract_period": contract_period,
-                "contract_amount": contract_amount_formatted,
-                "company_name": company_name,
-                "budget_item": budget_item,
-                "contract_method": contract_method
-            }
-
-            st.json(debug_params)
-            st.write(f"업로드된 파일 수: {len([f for f, _ in uploaded_db_files])}")
-            st.write(f"누락 파일 수: {len([(f, r) for f, r in missing_db_files])}")
-
-            with st.spinner("📄 일상감사 의견서 생성 중..."):
-                try:
-                    st.write("✓ 보고서 생성 함수 호출 시작")
-                    
-                    # 간단한 테스트용 Word 문서 생성 먼저 시도
-                    try:
-                        from docx import Document
-                        test_doc = Document()
-                        test_doc.add_heading('테스트 문서', 0)
-                        test_doc.add_paragraph('이것은 테스트 문단입니다.')
-                        
-                        test_folder = os.path.join(base_folder, "test_reports")
-                        os.makedirs(test_folder, exist_ok=True)
-                        test_path = os.path.join(test_folder, f"테스트_{submission_id}.docx")
-                        test_doc.save(test_path)
-                        
-                        if os.path.exists(test_path) and os.path.getsize(test_path) > 0:
-                            st.success("✓ Word 문서 기본 생성 테스트 성공")
-                            os.remove(test_path)  # 테스트 파일 삭제
-                        else:
-                            st.error("❌ Word 문서 기본 생성 테스트 실패")
-                        
-                    except Exception as test_error:
-                        st.error(f"❌ Word 문서 테스트 오류: {str(test_error)}")
-                    
-                    st.write("✓ 실제 보고서 생성 시작")
-                    
-                    # 실제 보고서 생성
-                    report_path = generate_audit_report_exact_format(
-                        submission_id=submission_id,
-                        department=department,
-                        manager=manager,
-                        phone=phone,
-                        contract_name=contract_name,
-                        contract_period=contract_period,
-                        contract_amount=contract_amount_formatted,
-                        uploaded_files=[f for f, _ in uploaded_db_files],
-                        missing_files_with_reasons=[(f, r) for f, r in missing_db_files],
-                        company_name=company_name,
-                        budget_item=budget_item,
-                        contract_method=contract_method
-                    )
-                    
-                    st.write(f"✓ 함수 실행 완료. 반환값: {report_path}")
-                    
-                    if report_path:
-                        st.write(f"✓ 파일 경로 반환됨: {report_path}")
-                        
-                        if os.path.exists(report_path):
-                            file_size = os.path.getsize(report_path)
-                            st.write(f"✓ 파일 존재 확인. 크기: {file_size} bytes")
-                            
-                            if file_size > 0:
-                                email_attachments.append(report_path)
-                                body += "* 일상감사 의견서가 첨부되어 있습니다.\n"
-                                report_generated = True
-                                st.success(f"✅ 일상감사 의견서 생성 완료 ({file_size:,} bytes)")
-                                
-                                # 파일 다운로드 버튼으로 확인
-                                with open(report_path, "rb") as file:
-                                    st.download_button(
-                                        label="🔍 생성된 의견서 확인 (다운로드)",
-                                        data=file.read(),
-                                        file_name=f"디버그_의견서_{submission_id}.docx",
-                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                    )
-                            else:
-                                st.error("❌ 파일이 생성되었지만 크기가 0입니다.")
-                        else:
-                            st.error(f"❌ 파일이 생성되지 않았습니다: {report_path}")
-                    else:
-                        st.error("❌ 함수에서 None 반환됨")
-                    
-                except Exception as e:
-                    st.error(f"❌ 의견서 생성 중 오류: {str(e)}")
-                    import traceback
-                    st.code(traceback.format_exc())
-
-            # 의견서 생성 실패시 알림
-            if not report_generated:
-                body += "* 일상감사 의견서 생성에 실패했습니다. 업로드된 파일만 첨부됩니다.\n"
-                st.info("📝 의견서 없이 파일만 발송됩니다.")
-
-            st.write("🔍 **디버깅 정보 종료**")
-
-            # 첨부 파일 최종 확인
-            st.write(f"📎 **첨부 파일 목록** ({len(email_attachments)}개):")
-            for i, attachment in enumerate(email_attachments, 1):
-                if os.path.exists(attachment):
-                    size = os.path.getsize(attachment)
-                    filename = os.path.basename(attachment)
-                    st.write(f"  {i}. {filename} ({size:,} bytes)")
-                else:
-                    st.error(f"  {i}. ❌ 파일 없음: {attachment}")
-
+            if report_path and os.path.exists(report_path):
+                email_attachments.append(report_path)
+                body += "* GPT 기반 감사보고서 초안이 첨부되어 있습니다.\n"
             # 이메일 발송
-            with st.spinner("📧 이메일을 발송 중입니다..."):
+            with st.spinner("이메일을 발송 중입니다..."):
                 success, message = send_email(email_subject, body, recipient_email, email_attachments)
                 
                 if success:
