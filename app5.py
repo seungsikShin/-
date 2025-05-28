@@ -905,6 +905,29 @@ def save_submission_with_info(submission_id, department, manager, phone, contrac
         logger.error(f"DB 접수 상태 업데이트 오류: {str(e)}")
         return False
 
+# 데이터베이스에서 접수 내역 업데이트
+def update_submission_status(submission_id, status, email_sent=1) -> bool:
+    """
+    접수 내역의 상태를 업데이트합니다.
+    
+    Returns:
+        성공 여부
+    """
+    try:
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
+        c.execute('''
+        UPDATE submissions
+        SET status = ?, email_sent = ?
+        WHERE submission_id = ?
+        ''', (status, email_sent, submission_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"DB 접수 상태 업데이트 오류: {str(e)}")
+        return False
+
 # OpenAI API를 사용하여 질문에 답변하는 함수
 def get_clean_answer_from_gpts(question: str) -> Tuple[str, bool]:
     """
@@ -1480,7 +1503,7 @@ elif st.session_state["page"] == "접수 완료":
     st.title("✅ 일상감사 접수 완료")
 
     # ─── DB에서 접수 정보 불러오기 ───
-    sub_id = st.session_state["submission_id"]
+    submission_id = st.session_state["submission_id"]  # ← sub_id를 submission_id로 변경
     conn = sqlite3.connect('audit_system.db')
     c = conn.cursor()
 
@@ -1490,7 +1513,7 @@ elif st.session_state["page"] == "접수 완료":
                company_name, budget_item, contract_method
         FROM submissions
         WHERE submission_id = ?
-    """, (sub_id,))
+    """, (submission_id,))  # ← sub_id를 submission_id로 변경
 
     result = c.fetchone()
     if result:
@@ -1524,7 +1547,7 @@ elif st.session_state["page"] == "접수 완료":
     uploaded_file_list = []
     c.execute(
         "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ?",
-        (sub_id,)
+        (submission_id,)  # ← sub_id를 submission_id로 변경
     )
     uploaded_db_files = c.fetchall()
 
@@ -1537,7 +1560,7 @@ elif st.session_state["page"] == "접수 완료":
     # 누락된 파일 및 사유
     c.execute(
         "SELECT file_name, reason FROM missing_file_reasons WHERE submission_id = ?",
-        (sub_id,)
+        (submission_id,)  # ← sub_id를 submission_id로 변경
     )
     missing_db_files = c.fetchall()
     
@@ -1551,12 +1574,12 @@ elif st.session_state["page"] == "접수 완료":
     for req_file in required_files:
         # 업로드 파일 확인
         c.execute("SELECT COUNT(*) FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
-                  (sub_id, f"%{req_file}%"))
+                  (submission_id, f"%{req_file}%"))  # ← sub_id를 submission_id로 변경
         file_count = c.fetchone()[0]
         
         # 사유 제공 확인
         c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
-                  (sub_id, req_file))
+                  (submission_id, req_file))  # ← sub_id를 submission_id로 변경
         reason_count = c.fetchone()[0]
         if file_count == 0 and reason_count == 0:
             incomplete_files.append(req_file)
