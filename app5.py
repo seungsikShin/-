@@ -1247,7 +1247,7 @@ elif st.session_state["page"] == "파일 업로드":
     # ... (기존 입력 UI 코드가 여기에 위치) ...
 
     # 접수 정보 입력
-    st.markdown("### 📋 접수 정보")
+    
     st.markdown("---")
 
     # 첫 번째 행: 기본 담당자 정보
