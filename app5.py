@@ -197,8 +197,293 @@ def generate_audit_report_with_gpt(submission_id, department, manager, phone, co
         logger.error(f"GPT 보고서 생성 오류: {str(e)}")
         return None
 
+# 파일 내용 읽기 함수 추가
 
+def extract_file_content(file_path: str) -> str:
+    """
+    업로드된 파일의 내용을 추출하여 텍스트로 반환합니다.
+    """
+    try:
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        if file_ext == '.txt':
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        
+        elif file_ext == '.docx':
+            doc = Document(file_path)
+            content = []
+            for paragraph in doc.paragraphs:
+                content.append(paragraph.text)
+            return '\n'.join(content)
+        
+        elif file_ext == '.pdf':
+            try:
+                import PyPDF2
+                with open(file_path, 'rb') as f:
+                    reader = PyPDF2.PdfReader(f)
+                    content = []
+                    for page in reader.pages:
+                        content.append(page.extract_text())
+                    return '\n'.join(content)
+            except ImportError:
+                return "[PDF 파일 - 내용 읽기 불가: PyPDF2 모듈 필요]"
+        
+        elif file_ext in ['.jpg', '.jpeg', '.png', '.gif']:
+            return "[이미지 파일 - 텍스트 내용 없음]"
+        
+        elif file_ext in ['.xlsx', '.xls']:
+            try:
+                import pandas as pd
+                df = pd.read_excel(file_path)
+                return df.to_string()
+            except ImportError:
+                return "[엑셀 파일 - 내용 읽기 불가: pandas 모듈 필요]"
+        
+        else:
+            # 기타 텍스트 파일 시도
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    return f.read()
+            except UnicodeDecodeError:
+                try:
+                    with open(file_path, 'r', encoding='cp949') as f:
+                        return f.read()
+                except:
+                    return "[파일 내용 읽기 실패]"
+    
+    except Exception as e:
+        logger.error(f"파일 내용 추출 오류: {str(e)}")
+        return f"[파일 읽기 오류: {str(e)}]"
 
+# 개선된 GPT 감사보고서 생성 함수
+
+def generate_audit_report_with_gpt_enhanced(submission_id, department, manager, phone, contract_name,
+                                           contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
+    try:
+        # 제출 자료의 실제 내용 추출
+        uploaded_content = ""
+        if uploaded_files:
+            uploaded_content = "## 제출된 자료 및 내용\n\n"
+            
+            # DB에서 실제 파일 경로 가져오기
+            conn = sqlite3.connect('audit_system.db')
+            c = conn.cursor()
+            
+            for file_name in uploaded_files:
+                c.execute("SELECT file_path FROM uploaded_files WHERE submission_id = ? AND file_name = ?", 
+                         (submission_id, file_name))
+                result = c.fetchone()
+                
+                if result and os.path.exists(result[0]):
+                    file_content = extract_file_content(result[0])
+                    uploaded_content += f"### 📄 {file_name}\n"
+                    uploaded_content += f"```\n{file_content[:2000]}\n```\n\n"  # 내용 길이 제한
+                else:
+                    uploaded_content += f"### 📄 {file_name}\n[파일 내용 읽기 실패]\n\n"
+            
+            conn.close()
+        else:
+            uploaded_content = "## 제출된 자료\n없음\n\n"
+        
+        # 누락 자료 정리
+        missing_list = ""
+        if missing_files_with_reasons:
+            missing_list = "## 누락된 자료 및 사유\n\n"
+            missing_list += "\n".join([f"- **{name}**: {reason}" for name, reason in missing_files_with_reasons])
+        else:
+            missing_list = "## 누락된 자료\n없음\n\n"
+        
+        # 개선된 프롬프트 (실제 파일 내용 포함)
+        user_message = f"""
+다음 정보를 기반으로, 상세하고 전문적인 일상감사 보고서를 작성해주세요:
+
+## 계약 기본 정보
+- 접수 ID: {submission_id}
+- 접수 부서: {department}
+- 담당자: {manager} (연락처: {phone})
+- 계약명: {contract_name}
+- 계약 체결일: {contract_date}
+- 계약금액: {contract_amount}
+
+{uploaded_content}
+
+{missing_list}
+
+## 보고서 작성 지침
+1. 제출된 파일의 실제 내용을 분석하여 구체적인 검토 의견을 제시할 것
+2. 계약서, 품의서, 입찰평가표 등의 내용을 바탕으로 적정성을 평가할 것
+3. 누락된 자료로 인한 제약사항을 명시할 것
+4. 각 항목별로 "현황 → 검토의견 → 개선사항" 구조로 서술할 것
+5. 구체적인 수치나 조건이 있다면 이를 인용하여 분석할 것
+6. 전문적인 감사 관점에서 위험요소나 개선점을 도출할 것
+
+실제 제출 자료의 내용을 기반으로 한 전문적이고 실질적인 감사보고서를 작성해주세요.
+"""
+        
+        # GPT 응답 받기
+        answer, success = get_clean_answer_from_gpts(user_message)
+        if not success:
+            return None
+
+        # 인용 마크 및 볼드 콜론 패턴 제거
+        answer = re.sub(r'\【\d+\:\d+\†source\】', '', answer)
+        answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)
+        
+        # Word 문서 생성
+        document = Document()
+        document.add_heading('일상감사 보고서 초안', level=0)
+        
+        # 보고서 내용을 적절한 형식으로 변환
+        for line in answer.strip().split("\n"):
+            if line.strip().startswith("# "):
+                document.add_heading(line.replace("# ", "").strip(), level=1)
+            elif line.strip().startswith("## "):
+                document.add_heading(line.replace("## ", "").strip(), level=2)
+            elif line.strip().startswith("### "):
+                document.add_heading(line.replace("### ", "").strip(), level=3)
+            elif line.strip().startswith("- ") or line.strip().startswith("* "):
+                p = document.add_paragraph()
+                p.style = 'List Bullet'
+                p.add_run(line.strip()[2:])
+            else:
+                if line.strip():
+                    document.add_paragraph(line.strip())
+
+        report_folder = os.path.join(base_folder, "draft_reports")
+        os.makedirs(report_folder, exist_ok=True)
+        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
+        document.save(report_path)
+        return report_path
+
+    except Exception as e:
+        logger.error(f"GPT 보고서 생성 오류: {str(e)}")
+        return None
+
+# 최적화된 GPT 감사보고서 생성 함수
+
+def generate_audit_report_with_gpt_optimized(submission_id, department, manager, phone, contract_name,
+                                           contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
+    try:
+        # 제출 자료의 실제 내용 추출
+        uploaded_content = ""
+        if uploaded_files:
+            uploaded_content = "## 제출된 자료 및 내용\n\n"
+            
+            # DB에서 실제 파일 경로 가져오기
+            conn = sqlite3.connect('audit_system.db')
+            c = conn.cursor()
+            
+            for file_name in uploaded_files:
+                c.execute("SELECT file_path FROM uploaded_files WHERE submission_id = ? AND file_name = ?", 
+                         (submission_id, file_name))
+                result = c.fetchone()
+                
+                if result and os.path.exists(result[0]):
+                    file_content = extract_file_content(result[0])
+                    uploaded_content += f"### 📄 {file_name}\n"
+                    uploaded_content += f"```\n{file_content[:2000]}\n```\n\n"  # 내용 길이 제한
+                else:
+                    uploaded_content += f"### 📄 {file_name}\n[파일 내용 읽기 실패]\n\n"
+            
+            conn.close()
+        else:
+            uploaded_content = "제출된 자료: 없음\n\n"
+        
+        # 누락 자료 정리
+        missing_content = ""
+        if missing_files_with_reasons:
+            missing_content = "## 누락된 자료 및 사유\n\n"
+            missing_content += "\n".join([f"- **{name}**: {reason}" for name, reason in missing_files_with_reasons])
+        else:
+            missing_content = "누락된 자료: 없음\n\n"
+        
+        # 🔥 단순화된 프롬프트 (System instructions에 의존)
+        user_message = f"""
+일상감사 보고서 초안을 작성해주세요.
+
+## 기본 정보
+**접수 ID**: {submission_id}
+**접수 부서**: {department}  
+**담당자**: {manager} (연락처: {phone})
+**계약명**: {contract_name}
+**계약 체결일**: {contract_date}
+**계약금액**: {contract_amount}
+
+{uploaded_content}
+
+{missing_content}
+
+위 정보를 바탕으로 일상감사 보고서 초안을 작성해주세요.
+"""
+        
+        # GPT 응답 받기
+        answer, success = get_clean_answer_from_gpts(user_message)
+        if not success:
+            return None
+
+        # 인용 마크 제거
+        answer = re.sub(r'\【\d+\:\d+\†source\】', '', answer)
+        answer = re.sub(r'\*\*(.*?)\:\*\*', r'\1', answer)
+        
+        # Word 문서 생성
+        document = Document()
+        document.add_heading('일상감사 보고서 초안', level=0)
+        
+        # 접수 정보 테이블 추가
+        info_table = document.add_table(rows=6, cols=2)
+        info_table.style = 'Table Grid'
+        
+        info_data = [
+            ('접수 ID', submission_id),
+            ('접수 부서', department),
+            ('담당자', f"{manager} ({phone})"),
+            ('계약명', contract_name),
+            ('계약 체결일', contract_date),
+            ('계약금액', contract_amount)
+        ]
+        
+        for i, (label, value) in enumerate(info_data):
+            info_table.cell(i, 0).text = label
+            info_table.cell(i, 1).text = str(value)
+        
+        document.add_paragraph()  # 공백 추가
+        
+        # GPT 응답을 문서에 추가
+        for line in answer.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+                
+            if line.startswith("■ ") or line.startswith("# "):
+                # 주요 섹션 헤딩
+                heading_text = line.replace("■ ", "").replace("# ", "")
+                document.add_heading(heading_text, level=1)
+            elif line.startswith("### "):
+                document.add_heading(line.replace("### ", ""), level=3)
+            elif line.startswith("## "):
+                document.add_heading(line.replace("## ", ""), level=2)
+            elif line.startswith("→ ") or line.startswith("- "):
+                # 권고사항이나 리스트
+                p = document.add_paragraph()
+                p.style = 'List Bullet'
+                p.add_run(line[2:])
+            else:
+                # 일반 문단
+                document.add_paragraph(line)
+
+        # 보고서 저장
+        report_folder = os.path.join(base_folder, "draft_reports")
+        os.makedirs(report_folder, exist_ok=True)
+        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
+        document.save(report_path)
+        
+        logger.info(f"감사보고서 초안 생성 완료: {report_path}")
+        return report_path
+
+    except Exception as e:
+        logger.error(f"GPT 보고서 생성 오류: {str(e)}")
+        return None
 
 # OpenAI API 정보 (하드코딩)
 openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -1071,7 +1356,7 @@ elif st.session_state["page"] == "접수 완료":
             if zip_file_path:
                 body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
             # ✅ [여기] GPT 보고서 생성 및 첨부 추가
-            report_path = generate_audit_report_with_gpt(
+            report_path = generate_audit_report_with_gpt_optimized(
                 submission_id=submission_id,
                 department=st.session_state.get("department", ""),
                 manager=st.session_state.get("manager", ""),
