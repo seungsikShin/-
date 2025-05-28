@@ -26,7 +26,7 @@ import re
 import ssl
 import shutil
 from typing import List, Dict, Optional, Tuple, Any
-from docx import Document
+#from docx import Document
 import zipfile
 
 # --- 페이지 상태 관리 변수 추가 (맨 위에)
