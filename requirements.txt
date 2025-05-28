@@ -1,7 +1,6 @@
 streamlit
 python-dotenv
 requests
-pypdf
 python-docx
 python-pptx
 numpy
