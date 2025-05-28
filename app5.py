@@ -1254,7 +1254,8 @@ elif st.session_state["page"] == "파일 업로드":
         contract_date = st.text_input("계약 체결일(예상)", key="contract_date")
         contract_amount_str = st.text_input("계약금액", value="0", key="contract_amount")
         company_name = st.text_input("계약 상대방", key="company_name", help="업체명")
-        budget_item = st.text_input("예산과목", value="지급수수료료", key="budget_item")
+        budget_item = st.text_input("예산과목", key="budget_item", 
+                                   help="해당 사업의 예산과목을 입력하세요")
         contract_method = st.selectbox("계약방식", 
                                       ["일반경쟁입찰", "제한경쟁입찰", "지명경쟁입찰", "수의계약", "기타"], 
                                       key="contract_method")
