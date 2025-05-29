@@ -392,59 +392,52 @@ def generate_audit_report_with_gpt_enhanced(submission_id, department, manager, 
 # 최적화된 GPT 감사보고서 생성 함수
 
 def generate_audit_report_with_file_content(submission_id, department, manager, phone, contract_name,
-                                           contract_date, contract_amount, uploaded_files, missing_files_with_reasons,
-                                           company_name="", budget_item="", contract_method="") -> Optional[str]:
-    """
-    수정된 GPT 감사보고서 생성 함수 - 모든 필드 포함
-    """
+                                           contract_date, contract_amount, uploaded_files, missing_files_with_reasons) -> Optional[str]:
     try:
         # 제출 자료의 실제 내용 추출
         uploaded_content = ""
         if uploaded_files:
-            uploaded_content = "## 제출된 자료 및 실제 내용\\n\\n"
-
+            uploaded_content = "## 제출된 자료 및 실제 내용\n\n"
+            
             # DB에서 실제 파일 경로 가져오기
             conn = sqlite3.connect('audit_system.db')
             c = conn.cursor()
-
+            
             for file_name in uploaded_files:
-                c.execute("SELECT file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?",
+                c.execute("SELECT file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
                          (submission_id, f"%{file_name.split(' - ')[0]}%"))
                 result = c.fetchone()
-
+                
                 if result and os.path.exists(result[0]):
                     file_content = extract_file_content(result[0])
-                    uploaded_content += f"### 📄 {file_name}\\n"
-                    uploaded_content += f"**파일 내용:**\\n```\\n{file_content}\\n```\\n\\n"
+                    uploaded_content += f"### 📄 {file_name}\n"
+                    uploaded_content += f"**파일 내용:**\n```\n{file_content}\n```\n\n"
                 else:
-                    uploaded_content += f"### 📄 {file_name}\\n**상태:** 파일 내용 읽기 실패\\n\\n"
-
+                    uploaded_content += f"### 📄 {file_name}\n**상태:** 파일 내용 읽기 실패\n\n"
+            
             conn.close()
         else:
-            uploaded_content = "제출된 자료: 없음\\n\\n"
-
+            uploaded_content = "제출된 자료: 없음\n\n"
+        
         # 누락 자료 정리
         missing_content = ""
         if missing_files_with_reasons:
-            missing_content = "## 누락된 자료 및 사유\\n\\n"
-            missing_content += "\\n".join([f"- **{name}**: {reason}" for name, reason in missing_files_with_reasons])
+            missing_content = "## 누락된 자료 및 사유\n\n"
+            missing_content += "\n".join([f"- **{name}**: {reason}" for name, reason in missing_files_with_reasons])
         else:
-            missing_content = "누락된 자료: 없음\\n\\n"
-
-        # 실제 파일 내용을 포함한 프롬프트 (모든 필드 포함)
+            missing_content = "누락된 자료: 없음\n\n"
+        
+        # 실제 파일 내용을 포함한 프롬프트
         user_message = f"""
 일상감사 보고서 초안을 작성해주세요.
 
 ## 계약 기본 정보
 **접수 ID**: {submission_id}
-**접수 부서**: {department}
+**접수 부서**: {department}  
 **담당자**: {manager} (연락처: {phone})
 **계약명**: {contract_name}
 **계약 체결일**: {contract_date}
 **계약금액**: {contract_amount}
-**계약 상대방**: {company_name}
-**예산과목**: {budget_item}
-**계약방식**: {contract_method}
 
 {uploaded_content}
 
@@ -453,40 +446,30 @@ def generate_audit_report_with_file_content(submission_id, department, manager, 
 위의 실제 문서 내용을 분석하여 전문적인 일상감사 보고서 초안을 작성해주세요.
 특히 제출된 문서의 구체적인 내용을 인용하고 분석하여 실질적인 검토 의견을 제시해주세요.
 """
-
+        
         # GPT 응답 받기
         answer, success = get_clean_answer_from_gpts(user_message)
         if not success:
             return None
 
-        # 인용 마크 및 볼드 콜론 패턴 제거
-        answer = re.sub(r'【.*?】', '', answer)
-        answer = re.sub(r'\*\*(.*?):\*\*', r'\\1', answer)
-
-        # Word 문서 생성
-        document = Document()
-        document.add_heading('일상감사 보고서 초안', level=0)
-
-        # 보고서 내용을 적절한 형식으로 변환
-        for line in answer.strip().split("\\n"):
-            if line.strip().startswith("# "):
-                document.add_heading(line.replace("# ", "").strip(), level=1)
-            elif line.strip().startswith("## "):
-                document.add_heading(line.replace("## ", "").strip(), level=2)
-            elif line.strip().startswith("### "):
-                document.add_heading(line.replace("### ", "").strip(), level=3)
-            elif line.strip().startswith("- ") or line.strip().startswith("* "):
-                p = document.add_paragraph()
-                p.style = 'List Bullet'
-                p.add_run(line.strip()[2:])
-            else:
-                if line.strip():
-                    document.add_paragraph(line.strip())
-
+        # 보고서 파일 저장 (텍스트 파일로)
         report_folder = os.path.join(base_folder, "draft_reports")
         os.makedirs(report_folder, exist_ok=True)
-        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.docx")
-        document.save(report_path)
+        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.txt")
+        
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write("일상감사 보고서 초안\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(f"접수 ID: {submission_id}\n")
+            f.write(f"접수 부서: {department}\n")  
+            f.write(f"담당자: {manager} ({phone})\n")
+            f.write(f"계약명: {contract_name}\n")
+            f.write(f"계약 체결일: {contract_date}\n")
+            f.write(f"계약금액: {contract_amount}\n\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(answer)
+        
+        logger.info(f"실제 파일 내용 기반 감사보고서 생성 완료: {report_path}")
         return report_path
 
     except Exception as e:
@@ -509,10 +492,7 @@ def init_db():
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
         
-        # 기존 테이블 삭제 후 새로 생성 (필드 추가를 위해)
-        c.execute('DROP TABLE IF EXISTS submissions')
-        
-        # 접수 내역 테이블 생성 - 새로운 필드들 추가
+        # 접수 내역 테이블 생성 - 필요한 필드 추가
         c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -524,9 +504,6 @@ def init_db():
             contract_name TEXT,
             contract_date TEXT,
             contract_amount TEXT,
-            company_name TEXT,
-            budget_item TEXT,
-            contract_method TEXT,
             status TEXT,
             email_sent INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -561,42 +538,12 @@ def init_db():
         
         conn.commit()
         conn.close()
-        logger.info("데이터베이스 초기화 완료 (새 필드 포함)")
+        logger.info("데이터베이스 초기화 완료")
         return True
     except Exception as e:
         logger.error(f"데이터베이스 초기화 오류: {str(e)}")
         return False
-
-# 새로운 저장 함수 추가 (기존 함수 뒤에 추가)
-def save_submission_with_enhanced_info(submission_id, department, manager, phone, contract_name, 
-                                      contract_date, contract_amount, company_name="", 
-                                      budget_item="", contract_method="", status="접수중", email_sent=0) -> bool:
-    """
-    모든 접수 정보를 데이터베이스에 저장합니다 (새 필드 포함).
     
-    Returns:
-        성공 여부
-    """
-    try:
-        conn = sqlite3.connect('audit_system.db')
-        c = conn.cursor()
-        c.execute('''
-        INSERT OR REPLACE INTO submissions
-        (submission_date, submission_id, department, manager, phone, contract_name, 
-         contract_date, contract_amount, company_name, budget_item, contract_method, 
-         status, email_sent)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (upload_date, submission_id, department, manager, phone, contract_name, 
-              contract_date, contract_amount, company_name, budget_item, contract_method, 
-              status, email_sent))
-        conn.commit()
-        conn.close()
-        logger.info(f"향상된 접수 정보 저장 완료: {submission_id}")
-        return True
-    except Exception as e:
-        logger.error(f"DB 향상된 접수 정보 저장 오류: {str(e)}")
-        return False
-
 # 필수 업로드 파일 목록 (누락된 파일 체크용)
 required_files = [
     "계약서 파일",
@@ -712,6 +659,52 @@ def save_missing_reason_to_db(submission_id, file_name, reason) -> bool:
         return True
     except Exception as e:
         logger.error(f"DB 사유 저장 오류: {str(e)}")
+        return False
+
+# 데이터베이스에 접수 내역 저장 (접수 정보 포함)
+def save_submission_with_info(submission_id, department, manager, phone, contract_name, contract_date, contract_amount, status="접수중", email_sent=0) -> bool:
+    """
+    접수 내역과 추가 정보를 데이터베이스에 저장합니다.
+    
+    Returns:
+        성공 여부
+    """
+    try:
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
+        c.execute('''
+        INSERT OR REPLACE INTO submissions
+        (submission_date, submission_id, department, manager, phone, contract_name, contract_date, contract_amount, status, email_sent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (upload_date, submission_id, department, manager, phone, contract_name, contract_date, contract_amount, status, email_sent))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"DB 접수 내역 저장 오류: {str(e)}")
+        return False
+
+# 데이터베이스에서 접수 내역 업데이트
+def update_submission_status(submission_id, status, email_sent=1) -> bool:
+    """
+    접수 내역의 상태를 업데이트합니다.
+    
+    Returns:
+        성공 여부
+    """
+    try:
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
+        c.execute('''
+        UPDATE submissions
+        SET status = ?, email_sent = ?
+        WHERE submission_id = ?
+        ''', (status, email_sent, submission_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"DB 접수 상태 업데이트 오류: {str(e)}")
         return False
 
 # OpenAI API를 사용하여 질문에 답변하는 함수
@@ -1045,109 +1038,45 @@ if st.session_state["page"] == "질의응답":
 elif st.session_state["page"] == "파일 업로드":
     st.title("📤 일상감사 파일 업로드")
 
-    # 접수 정보 입력 (아이콘과 추가 필드 포함)
-    st.markdown("### 📋 접수 정보")
-    
-    # 첫 번째 행: 기본 담당자 정보
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        department = st.text_input("🏢 접수부서", key="department", placeholder="예: 전산팀")
-    with col2:
-        manager = st.text_input("👤 담당자", key="manager", placeholder="예: 홍길동")
-    with col3:
-        phone = st.text_input("📞 전화번호", key="phone", placeholder="예: 02-1234-5678")
-    
-    # 두 번째 행: 계약 기본 정보
+    # 접수 정보 입력
+    st.markdown("### 접수 정보")
     col1, col2 = st.columns(2)
     with col1:
-        contract_name = st.text_input("📄 계약명", key="contract_name", placeholder="예: 홈페이지 구축 사업")
-        contract_amount_str = st.text_input("💰 계약금액", value="0", key="contract_amount", placeholder="예: 10000000")
+        department = st.text_input("접수부서", key="department")
+        manager = st.text_input("담당자", key="manager")
+        phone = st.text_input("전화번호", key="phone")
     with col2:
-        company_name = st.text_input("🏢 계약 상대방", key="company_name", placeholder="예: (주)ABC솔루션")
-        budget_item = st.text_input("💼 예산과목", key="budget_item", placeholder="예: 정보화사업비")
-    
-    # 세 번째 행: 계약 기간과 방식
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        contract_start_date = st.text_input("📅 계약 시작일", key="contract_start_date", placeholder="예: 2025-06-01")
-    with col2:
-        contract_end_date = st.text_input("📅 계약 종료일", key="contract_end_date", placeholder="예: 2026-05-31")
-    with col3:
-        contract_method = st.selectbox(
-            "📋 계약방식", 
-            ["선택하세요", "일반경쟁입찰", "제한경쟁입찰", "수의계약", "기타"],
-            key="contract_method"
-        )
-    
-    # 계약금액 포맷팅
-    try:
-        contract_amount = int(contract_amount_str.replace(',', ''))
-        contract_amount_formatted = f"{contract_amount:,}원"
-    except ValueError:
-        contract_amount_formatted = contract_amount_str + "원" if contract_amount_str else "0원"
-    
-    # 계약기간 통합
-    if contract_start_date and contract_end_date:
-        contract_period = f"{contract_start_date} ~ {contract_end_date}"
-    elif contract_start_date:
-        contract_period = f"{contract_start_date} ~"
-    elif contract_end_date:
-        contract_period = f"~ {contract_end_date}"
-    else:
-        contract_period = "미입력"
+        contract_name = st.text_input("계약명", key="contract_name")
+        contract_date = st.text_input("계약 체결일(예상)", key="contract_date")
+        contract_amount_str = st.text_input("계약금액", value="0", key="contract_amount")
+        try:
+            contract_amount = int(contract_amount_str.replace(',', ''))
+            contract_amount_formatted = f"{contract_amount:,}"
+        except ValueError:
+            contract_amount_formatted = contract_amount_str
 
-    # 접수 ID 업데이트 및 표시
+    # 접수 ID 표시
     if department:
         safe_dept = re.sub(r'[^\w]', '', department)[:6]
         st.session_state["submission_id"] = f"AUDIT-{upload_date}-{safe_dept}"
     sid = st.session_state["submission_id"]
-    
-    # 접수 정보 요약 박스 (미리보기)
-    st.markdown("### 📊 접수 정보 미리보기")
-    with st.expander("입력된 정보 확인", expanded=True):
-        info_col1, info_col2 = st.columns(2)
-        with info_col1:
-            st.markdown(f"""
-            **📋 접수 ID**: `{sid}`  
-            **🏢 접수부서**: {department or '미입력'}  
-            **👤 담당자**: {manager or '미입력'}  
-            **📞 연락처**: {phone or '미입력'}  
-            **📄 계약명**: {contract_name or '미입력'}\n
-            """)
-        with info_col2:
-            st.markdown(f"""
-            **🏢 계약상대방**: {company_name or '미입력'}  
-            **💰 계약금액**: {contract_amount_formatted}  
-            **📅 계약기간**: {contract_period}  
-            **💼 예산과목**: {budget_item or '미입력'}  
-            **📋 계약방식**: {contract_method if contract_method != "선택하세요" else "미입력"}\n
-            """)
-    
+    st.info(f"접수 ID: {sid}")
     st.markdown("---")
 
-    # 접수 정보 DB 저장 (모든 새 필드 포함)
-    if all([department, manager, phone, contract_name, contract_amount_str]):
-        # 기존 save_submission_with_info 함수 호출을 수정된 버전으로 변경
-        save_submission_with_enhanced_info(
-            submission_id=sid,
-            department=department,
-            manager=manager,
-            phone=phone,
-            contract_name=contract_name,
-            contract_date=contract_period,  # 통합된 계약기간
-            contract_amount=contract_amount_formatted,
-            company_name=company_name,
-            budget_item=budget_item,
-            contract_method=contract_method if contract_method != "선택하세요" else ""
+    # 접수 정보 DB 저장
+    if all([department, manager, phone, contract_name, contract_date, contract_amount_str]):
+        save_submission_with_info(
+            submission_id, department, manager, phone,
+            contract_name, contract_date, contract_amount_formatted
         )
 
-    st.markdown("### 📁 필요한 파일을 업로드하거나, 해당 파일이 없는 경우 사유를 입력해주세요.")
+    st.markdown("필요한 파일을 업로드하거나, 해당 파일이 없는 경우 사유를 입력해주세요.")
     progress_container = st.container()
     progress_bar = st.progress(0)
     total_files = len(required_files)
     uploaded_count = 0
 
-    # 파일 업로드/삭제/사유 입력 루프 (기존과 동일)
+    # 파일 업로드/삭제/사유 입력 루프
     for idx, file in enumerate(required_files):
         st.markdown(f"### {idx+1}. {file}")
         # DB에서 현재 업로드 혹은 사유 여부 조회
@@ -1155,12 +1084,12 @@ elif st.session_state["page"] == "파일 업로드":
         c = conn.cursor()
         c.execute(
             "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?",
-            (sid, f"%{file}%")
+            (submission_id, f"%{file}%")
         )
         uploaded_row = c.fetchone()
         c.execute(
             "SELECT reason FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?",
-            (sid, file)
+            (submission_id, file)
         )
         reason_row = c.fetchone()
         conn.close()
@@ -1180,7 +1109,7 @@ elif st.session_state["page"] == "파일 업로드":
                         c = conn.cursor()
                         c.execute(
                             "DELETE FROM uploaded_files WHERE submission_id = ? AND file_name = ?",
-                            (sid, file_name)
+                            (submission_id, file_name)
                         )
                         conn.commit()
                         conn.close()
@@ -1206,7 +1135,7 @@ elif st.session_state["page"] == "파일 업로드":
                         c = conn.cursor()
                         c.execute(
                             "DELETE FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?",
-                            (sid, file)
+                            (submission_id, file)
                         )
                         conn.commit()
                         conn.close()
@@ -1230,7 +1159,7 @@ elif st.session_state["page"] == "파일 업로드":
                     path = save_uploaded_file(uploaded_file, session_folder)
                     if path:
                         save_file_to_db(
-                            sid,
+                            submission_id,
                             f"{file} - {uploaded_file.name}",
                             path,
                             os.path.splitext(uploaded_file.name)[1],
@@ -1248,40 +1177,34 @@ elif st.session_state["page"] == "파일 업로드":
                     help="업로드 불가 시 사유를 입력하세요."
                 )
                 if reason:
-                    if save_missing_reason_to_db(sid, file, reason):
+                    if save_missing_reason_to_db(submission_id, file, reason):
                         st.info("사유 저장됨")
                         uploaded_count += 1
                         st.rerun()
 
     # 진행률 표시
     progress_bar.progress(uploaded_count / total_files)
-    progress_container.info(f"📊 진행 상황: {uploaded_count}/{total_files}")
+    progress_container.info(f"진행 상황: {uploaded_count}/{total_files}")
 
     # 다음 단계 버튼
-    if st.button("➡️ 다음 단계: 접수 완료", type="primary", use_container_width=True):
-        # 필수 정보 확인
-        required_info = [department, manager, phone, contract_name, company_name]
-        if not all(required_info):
-            st.warning("⚠️ 필수 접수 정보를 모두 입력해주세요.")
-            st.stop()
-        
+    if st.button("다음 단계: 접수 완료"):
+        # (이전과 동일하게 DB 체크 후 페이지 전환)
         # DB에서 직접 파일 및 사유 정보 확인
         conn = sqlite3.connect('audit_system.db')
         c = conn.cursor()
         incomplete_files = []
         for req_file in required_files:
             c.execute("SELECT COUNT(*) FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
-                      (sid, f"%{req_file}%"))
+                      (submission_id, f"%{req_file}%"))
             file_count = c.fetchone()[0]
             c.execute("SELECT COUNT(*) FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?", 
-                      (sid, req_file))
+                      (submission_id, req_file))
             reason_count = c.fetchone()[0]
             if file_count == 0 and reason_count == 0:
                 incomplete_files.append(req_file)
         conn.close()
-        
         if incomplete_files:
-            st.warning("⚠️ 다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete_files))
+            st.warning("다음 파일이 필요합니다:\n- " + "\n- ".join(incomplete_files))
         else:
             st.session_state["page"] = "접수 완료"
             st.rerun()
@@ -1290,89 +1213,24 @@ elif st.session_state["page"] == "파일 업로드":
 elif st.session_state["page"] == "접수 완료":
     st.title("✅ 일상감사 접수 완료")
 
-    # ─── DB에서 접수 정보 불러오기 (새 필드 포함) ───
+    # ─── DB에서 접수 정보 불러오기 ───
     sub_id = st.session_state["submission_id"]
     conn = sqlite3.connect('audit_system.db')
     c = conn.cursor()
-    
-    # 새로운 필드들까지 모두 조회
     c.execute("""
-        SELECT department, manager, phone, contract_name, contract_date, contract_amount,
-               company_name, budget_item, contract_method
+        SELECT department, manager, phone, contract_name, contract_date, contract_amount
         FROM submissions
         WHERE submission_id = ?
     """, (sub_id,))
-    
     result = c.fetchone()
     if result:
-        department, manager, phone, contract_name, contract_period, contract_amount, company_name, budget_item, contract_method = result
-        
-        # None 값들을 빈 문자열로 처리
-        department = department or ""
-        manager = manager or ""
-        phone = phone or ""
-        contract_name = contract_name or ""
-        contract_period = contract_period or ""
-        company_name = company_name or ""
-        budget_item = budget_item or ""
-        contract_method = contract_method or ""
-        
-        # contract_amount_formatted 변수 정의
-        if contract_amount:
-            try:
-                # 이미 포맷된 문자열에서 숫자만 추출
-                amount_only = str(contract_amount).replace(',', '').replace('원', '').strip()
-                if amount_only:  # 빈 문자열이 아닌 경우에만
-                    amount_num = int(amount_only)
-                    contract_amount_formatted = f"{amount_num:,}원"
-                else:
-                    contract_amount_formatted = "0원"
-            except (ValueError, AttributeError):
-                contract_amount_formatted = str(contract_amount) if contract_amount else "0원"
-        else:
-            contract_amount_formatted = "0원"
-
+        department, manager, phone, contract_name, contract_date, contract_amount = result
     else:
         st.error("접수 정보를 찾을 수 없습니다. 파일 업로드 페이지에서 접수 정보를 먼저 입력해주세요.")
-        # 모든 변수를 빈 문자열로 초기화
-        department = manager = phone = contract_name = contract_period = ""
-        company_name = budget_item = contract_method = ""
-        contract_amount_formatted = "0원"
+        department, manager, phone, contract_name, contract_date, contract_amount = "", "", "", "", "", ""
 
-    # 접수 내용 요약 (아이콘 포함)
-    st.markdown("### 📊 접수 내용 요약")
-    
-    # 예쁜 접수 정보 박스
-    with st.container():
-        st.markdown("""
-        <div style="
-            border: 2px solid #e1e5e9; 
-            border-radius: 10px; 
-            padding: 20px; 
-            background-color: #f8f9fa;
-            margin: 10px 0;
-        ">
-        """, unsafe_allow_html=True)
-        
-        info_col1, info_col2 = st.columns(2)
-        with info_col1:
-            st.markdown(f"""
-            **📋 접수 ID**: `{sub_id}`  
-            **🏢 접수부서**: {department}  
-            **👤 담당자**: {manager}  
-            **📞 연락처**: {phone}  
-            **📄 계약명**: {contract_name}
-            """)
-        with info_col2:
-            st.markdown(f"""
-            **🏢 계약상대방**: {company_name}  
-            **💰 계약금액**: {contract_amount_formatted}  
-            **📅 계약기간**: {contract_period}  
-            **💼 예산과목**: {budget_item}  
-            **📋 계약방식**: {contract_method}
-            """)
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+    # 접수 내용 요약
+    st.markdown("### 접수 내용 요약")
 
     # 업로드된 파일 목록
     uploaded_file_list = []
@@ -1383,7 +1241,7 @@ elif st.session_state["page"] == "접수 완료":
     uploaded_db_files = c.fetchall()
 
     if uploaded_db_files:
-        st.markdown("#### 📄 업로드된 파일")
+        st.markdown("#### 업로드된 파일")
         for file_name, file_path in uploaded_db_files:
             st.success(f"✅ {file_name}")
             uploaded_file_list.append(file_path)
@@ -1396,7 +1254,7 @@ elif st.session_state["page"] == "접수 완료":
     missing_db_files = c.fetchall()
     
     if missing_db_files:
-        st.markdown("#### 📝 누락된 파일 및 사유")
+        st.markdown("#### 누락된 파일 및 사유")
         for file_name, reason in missing_db_files:
             st.info(f"📝 {file_name}: {reason}")
 
@@ -1416,280 +1274,156 @@ elif st.session_state["page"] == "접수 완료":
             incomplete_files.append(req_file)
     current_missing_files = incomplete_files
 
-    # 모든 DB 작업이 끝난 후에 연결 종료
-    conn.close()
-
-    # 이메일 발송 섹션 (기존과 동일하지만 새 필드들을 TXT 생성에 전달)
-    st.markdown("### 📧 이메일 발송")
+# 이메일 발송 섹션
+    st.markdown("### 이메일 발송")
     recipient_email = st.text_input("수신자 이메일 주소", value=to_email)
     report_recipient_email = st.text_input(
         "보고서 회신 받을 이메일 주소",
         value="",
         help="감사보고서 완료 후 회신받을 이메일 주소를 입력하세요"
     )
-    email_subject = st.text_input("이메일 제목", value=f"일상감사 접수: {sub_id}")
+    email_subject = st.text_input("이메일 제목", value=f"일상감사 접수: {submission_id}")
     additional_message = st.text_area("추가 메시지", value="")
 
-    # 접수 완료 및 이메일 발송 버튼
-    if st.button('🚀 접수 완료 및 이메일 발송', type="primary", use_container_width=True):
+    # ✅ 버튼도 여기 안에 있어야 함
+    if st.button('접수 완료 및 이메일 발송'):
         if current_missing_files:
-            st.warning(f"⚠️ 누락된 파일: {', '.join(current_missing_files)}. 업로드 또는 사유를 입력해 주세요.")
+            st.warning(f"누락된 파일: {', '.join(current_missing_files)}. 업로드 또는 사유를 입력해 주세요.")
         else:
-            try:
-                # 필수 변수들이 정의되어 있는지 확인
-                required_vars = {
-                    'sub_id': sub_id,
-                    'department': department,
-                    'manager': manager,
-                    'phone': phone,
-                    'contract_name': contract_name,
-                    'contract_period': contract_period,
-                    'contract_amount_formatted': contract_amount_formatted,
-                    'company_name': company_name,
-                    'budget_item': budget_item,
-                    'contract_method': contract_method
-                }
+            # 업로드된 파일들을 ZIP으로 압축
+            zip_file_path = None
+            if uploaded_file_list:
+                zip_folder = os.path.join(base_folder, "zips")
+                if not os.path.exists(zip_folder):
+                    os.makedirs(zip_folder)
+                
+                zip_file_path = os.path.join(zip_folder, f"일상감사_파일_{submission_id}.zip")
+                
+                with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for file_path in uploaded_file_list:
+                        if os.path.exists(file_path):
+                            zipf.write(file_path, os.path.basename(file_path))
+                
+                # ZIP 파일 다운로드 버튼 제공
+                with open(zip_file_path, "rb") as f:
+                    zip_data = f.read()
+                    st.download_button(
+                        label="모든 파일 다운로드 (ZIP)",
+                        data=zip_data,
+                        file_name=f"일상감사_파일_{submission_id}.zip",
+                        mime="application/zip"
+                    )
+            
+            # 이메일 첨부 파일 목록 준비
+            email_attachments = []
+            
+            # ZIP 파일이 있으면 첨부
+            if zip_file_path and os.path.exists(zip_file_path):
+                email_attachments.append(zip_file_path)
+            else:
+                # ZIP 파일이 없으면 개별 파일 첨부
+                email_attachments.extend(uploaded_file_list)
+            
+            # 이메일 본문 작성
+            body = f"일상감사 접수 ID: {submission_id}\n"
+            body += f"접수일자: {upload_date}\n"
+            body += f"보고서 회신 이메일: {report_recipient_email}\n\n"
+            
+            if additional_message:
+                body += f"추가 메시지:\n{additional_message}\n\n"
+            
+            # 업로드된 파일 목록 추가
+            body += "업로드된 파일 목록:\n"
+            for file_name, _ in uploaded_db_files:
+                body += f"- {file_name}\n"
+            
+            # 누락된 파일 및 사유 추가
+            if missing_db_files:
+                body += "\n누락된 파일 및 사유:\n"
+                for file_name, reason in missing_db_files:
+                    body += f"- {file_name} (사유: {reason})\n"
+            
+            # 첨부 파일 안내 추가
+            if zip_file_path:
+                body += "\n* 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
+            # ✅ [여기] GPT 보고서 생성 및 첨부 추가
+            report_path = generate_audit_report_with_file_content(
+                submission_id=submission_id,
+                department=st.session_state.get("department", ""),
+                manager=st.session_state.get("manager", ""),
+                phone=st.session_state.get("phone", ""),
+                contract_name=st.session_state.get("contract_name", ""),
+                contract_date=st.session_state.get("contract_date", ""),
+                contract_amount=st.session_state.get("contract_amount_formatted", ""),
+                uploaded_files=[f for f, _ in uploaded_db_files],
+                missing_files_with_reasons=[(f, r) for f, r in missing_db_files]
+            )
 
-                # None 값들을 빈 문자열로 처리
-                for key, value in required_vars.items():
-                    if value is None:
-                        required_vars[key] = ""
-
-                # 업로드된 파일들을 ZIP으로 압축 (기존 코드 그대로)
-                zip_file_path = None
-                if uploaded_file_list:
-                    zip_folder = os.path.join(base_folder, "zips")
-                    if not os.path.exists(zip_folder):
-                        os.makedirs(zip_folder)
-
-                    zip_file_path = os.path.join(zip_folder, f"일상감사_파일_{sub_id}.zip")
-
-                    with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                        for file_path in uploaded_file_list:
-                            if os.path.exists(file_path):
-                                zipf.write(file_path, os.path.basename(file_path))
-
-                    # ZIP 파일 다운로드 버튼 제공 (선택 사항 - 이메일 발송 후 표시)
-
-                # 이메일 첨부 파일 목록 준비
-                email_attachments = []
-
-                # ZIP 파일이 있으면 첨부
-                if zip_file_path and os.path.exists(zip_file_path):
-                    email_attachments.append(zip_file_path)
+            if report_path and os.path.exists(report_path):
+                email_attachments.append(report_path)
+                body += "* GPT 기반 감사보고서 초안이 첨부되어 있습니다.\n"
+            # 이메일 발송
+            with st.spinner("이메일을 발송 중입니다..."):
+                success, message = send_email(email_subject, body, recipient_email, email_attachments)
+                
+                if success:
+                    # 데이터베이스에 접수 상태 업데이트
+                    update_submission_status(submission_id, "접수완료", 1)
+                    st.success("일상감사 접수가 완료되었으며, 이메일 알림이 발송되었습니다!")
+                    
+                    # 접수 완료 확인서 표시
+                    st.markdown("### 접수 완료 확인서")
+                    st.markdown(f"""
+                    **접수 ID**: {submission_id}  
+                    **접수일자**: {upload_date}  
+                    **처리상태**: 접수완료  
+                    **이메일 발송**: 완료 ({recipient_email})  
+                    **보고서 회신 이메일**: {report_recipient_email}
+                    """)
+                    
+                    # 다운로드 버튼 제공
+                    receipt_text = f"""
+                    일상감사 접수 확인서
+                    
+                    접수 ID: {submission_id}
+                    접수일자: {upload_date}
+                    처리상태: 접수완료
+                    이메일 발송: 완료 ({recipient_email})
+                    보고서 회신 이메일: {report_recipient_email}
+                    
+                    업로드된 파일 목록:
+                    """
+                    for file_name, _ in uploaded_db_files:
+                        receipt_text += f"- {file_name}\n"
+                    
+                    if missing_db_files:
+                        receipt_text += "\n누락된 파일 및 사유:\n"
+                        for file_name, reason in missing_db_files:
+                            receipt_text += f"- {file_name} (사유: {reason})\n"
+                    
+                    st.download_button(
+                        label="접수 확인서 다운로드",
+                        data=receipt_text,
+                        file_name=f"접수확인서_{submission_id}.txt",
+                        mime="text/plain"
+                    )
+                    
+                    # 이메일 발송 후 메모리 정리
+                    for attachment in email_attachments:
+                        if os.path.exists(attachment):
+                            try:
+                                # ZIP 파일은 남기고 나머지는 삭제 (선택적)
+                                if not attachment.endswith('.zip'):
+                                    os.remove(attachment)
+                            except Exception as e:
+                                logger.error(f"첨부파일 정리 오류: {str(e)}")
+                    
+                    # 캐시 데이터 초기화
+                    st.cache_data.clear()
+                    gc.collect()
                 else:
-                    # ZIP 파일이 없으면 개별 파일 첨부
-                    email_attachments.extend(uploaded_file_list)
+                    st.error(f"이메일 발송 중 오류가 발생했습니다: {message}")
 
-                # 이메일 본문 작성
-                body = f"📋 일상감사 접수 ID: {sub_id}\n"
-                body += f"📅 접수일자: {upload_date}\n"
-                body += f"📧 보고서 회신 이메일: {report_recipient_email}\n\n"
-
-                if additional_message:
-                    body += f"💬 추가 메시지:\n{additional_message}\n\n"
-
-                # 업로드된 파일 목록 추가
-                body += "📄 업로드된 파일 목록:\n"
-                for file_name, _ in uploaded_db_files:
-                    body += f"  ✅ {file_name}\n"
-
-                # 누락된 파일 및 사유 추가
-                if missing_db_files:
-                    body += "\n📝 누락된 파일 및 사유:\n"
-                    for file_name, reason in missing_db_files:
-                        body += f"  ❌ {file_name} (사유: {reason})\n"
-
-                # 첨부 파일 안내 추가
-                if zip_file_path:
-                    body += "\n📦 업로드된 파일들이 ZIP 파일로 압축되어 첨부되어 있습니다.\n"
-
-                # ✅ GPT 보고서 생성 및 첨부 (모든 필드 포함) - 수정된 함수 호출
-                report_path = generate_audit_report_with_file_content(
-                    submission_id=required_vars['sub_id'],
-                    department=required_vars['department'],
-                    manager=required_vars['manager'],
-                    phone=required_vars['phone'],
-                    contract_name=required_vars['contract_name'],
-                    contract_date=required_vars['contract_period'],
-                    contract_amount=required_vars['contract_amount_formatted'],
-                    uploaded_files=[f for f, _ in uploaded_db_files],
-                    missing_files_with_reasons=[(f, r) for f, r in missing_db_files],
-                    company_name=required_vars['company_name'],
-                    budget_item=required_vars['budget_item'],
-                    contract_method=required_vars['contract_method']
-                )
-
-                if report_path and os.path.exists(report_path):
-                    email_attachments.append(report_path)
-                    body += "📋 GPT 기반 일상감사 의견서가 첨부되어 있습니다.\n"
-
-                # 이메일 발송
-                with st.spinner("📧 이메일을 발송 중입니다..."):
-                    success, message = send_email(email_subject, body, recipient_email, email_attachments)
-
-                    if success:
-                        # 데이터베이스에 접수 상태 업데이트
-                        update_submission_status(sub_id, "접수완료", 1) # Assuming update_submission_status exists
-                        st.success("✅ 일상감사 접수가 완료되었으며, 이메일 알림이 발송되었습니다!")
-
-                        # 접수 완료 확인서 표시
-                        st.markdown("### 📋 접수 완료 확인서")
-                        with st.container():
-                            st.markdown("""
-                            <div style="
-                                border: 2px solid #28a745;
-                                border-radius: 10px;
-                                padding: 20px;
-                                background-color: #d4edda;
-                                margin: 10px 0;
-                            ">
-                            """, unsafe_allow_html=True)
-
-                            confirm_col1, confirm_col2 = st.columns(2)
-                            with confirm_col1:
-                                st.markdown(f"""
-                                **📋 접수 ID**: `{sub_id}`
-                                **📅 접수일자**: {upload_date}
-                                **✅ 처리상태**: 접수완료
-                                **📧 이메일 발송**: 완료 ({recipient_email})
-                                """)
-                            with confirm_col2:
-                                st.markdown(f"""
-                                **📧 보고서 회신 이메일**: {report_recipient_email}
-                                **📄 업로드 파일 수**: {len(uploaded_db_files)}개
-                                **📝 누락 파일 수**: {len(missing_db_files)}개
-                                **⏰ 접수 시각**: {datetime.datetime.now().strftime('%H:%M:%S')}
-                                """
-                                )
-
-                            st.markdown("</div>", unsafe_allow_html=True)
-
-                        # 다운로드 버튼 제공 (확인서)
-                        receipt_text = f"""
-═══════════════════════════════════════════════════════════════════════════════
-                          📋 일상감사 접수 확인서
-═══════════════════════════════════════════════════════════════════════════════
-
-📋 접수 ID      : {sub_id}
-📅 접수일자     : {upload_date}
-⏰ 접수 시각    : {datetime.datetime.now().strftime('%Y년 %m월 %d일 %H시 %M분')}
-✅ 처리상태     : 접수완료
-📧 이메일 발송  : 완료 ({recipient_email})
-📧 보고서 회신  : {report_recipient_email}
-
-───────────────────────────────────────────────────────────────────────────────
-                            📊 접수 정보 상세
-───────────────────────────────────────────────────────────────────────────────
-
-🏢 접수부서     : {department}
-👤 담당자       : {manager}
-📞 연락처       : {phone}
-📄 계약명       : {contract_name}
-🏢 계약상대방   : {company_name}
-💰 계약금액     : {contract_amount_formatted}
-📅 계약기간     : {contract_period}
-💼 예산과목     : {budget_item}
-📋 계약방식     : {contract_method}
-
-───────────────────────────────────────────────────────────────────────────────
-                            📄 제출 파일 현황
-───────────────────────────────────────────────────────────────────────────────
-
-✅ 업로드된 파일 목록:
-"""
-                        for i, (file_name, _) in enumerate(uploaded_db_files, 1):
-                            receipt_text += f"   {i:2d}. {file_name}\n"
-
-                        if missing_db_files:
-                            receipt_text += "\n❌ 누락된 파일 및 사유:\n"
-                            for i, (file_name, reason) in enumerate(missing_db_files, 1):
-                                receipt_text += f"   {i:2d}. {file_name}\n      사유: {reason}\n"
-
-                        receipt_text += f"""
-───────────────────────────────────────────────────────────────────────────────
-                              📝 처리 내역
-───────────────────────────────────────────────────────────────────────────────
-
-📦 첨부 파일    : {"ZIP 압축파일로 첨부" if zip_file_path else "개별 파일로 첨부"}
-📋 의견서 생성  : {"완료" if report_path and os.path.exists(report_path) else "실패"}
-📧 이메일 발송  : 완료
-📅 처리 완료일  : {datetime.datetime.now().strftime('%Y년 %m월 %d일')}
-
-═══════════════════════════════════════════════════════════════════════════════
-                    © 2025 OKH 감사팀 일상감사 접수 시스템
-═══════════════════════════════════════════════════════════════════════════════
-"""
-
-                        st.download_button(
-                            label="📄 접수 확인서 다운로드",
-                            data=receipt_text,
-                            file_name=f"접수확인서_{sub_id}.txt",
-                            mime="text/plain",
-                            use_container_width=True
-                        )
-
-                        # 추가 액션 버튼들
-                        st.markdown("### 🔄 추가 작업")
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button("🆕 새 접수 시작", use_container_width=True):
-                                # 새 접수를 위한 초기화
-                                st.session_state["uploader_reset_token"] = str(uuid.uuid4())
-                                for key in list(st.session_state.keys()):
-                                    if key.startswith(("uploader_", "reason_", "department", "manager", "phone", "contract_")):
-                                        del st.session_state[key]
-
-                                session_id = st.session_state["cookie_session_id"]
-                                st.session_state["submission_id"] = f"AUDIT-{today}-{session_id[:6]}"
-                                st.session_state["page"] = "질의응답"
-                                st.success("🎉 새로운 접수가 시작됩니다!")
-                                st.rerun()
-
-                        with col2:
-                            if report_path and os.path.exists(report_path):
-                                with open(report_path, "rb") as f:
-                                    report_data = f.read()
-                                st.download_button(
-                                    label="📋 생성된 의견서 다운로드",
-                                    data=report_data,
-                                    file_name=f"일상감사의견서_{sub_id}.txt",
-                                    mime="text/plain",
-                                    use_container_width=True
-                                )
-
-                        # 이메일 발송 후 메모리 정리
-                        for attachment in email_attachments:
-                            if os.path.exists(attachment):
-                                try:
-                                    # ZIP 파일과 의견서는 남기고 나머지는 삭제 (선택적)
-                                    if not attachment.endswith(('.zip', '.txt')):
-                                        os.remove(attachment)
-                                except Exception as e:
-                                    logger.error(f"첨부파일 정리 오류: {str(e)}")
-
-                        # 캐시 데이터 초기화
-                        st.cache_data.clear()
-                        gc.collect()
-                    else:
-                        st.error(f"❌ 이메일 발송 중 오류가 발생했습니다: {message}")
-
-                        # 실패 시에도 의견서 다운로드는 제공
-                        if report_path and os.path.exists(report_path):
-                            st.info("📋 의견서는 생성되었습니다. 아래에서 다운로드하실 수 있습니다.")
-                            with open(report_path, "rb") as f:
-                                report_data = f.read()
-                            st.download_button(
-                                label="📋 생성된 의견서 다운로드",
-                                data=report_data,
-                                file_name=f"일상감사의견서_{sub_id}.txt",
-                                mime="text/plain"
-                            )
-
-            except Exception as e:
-                logger.error(f"접수 완료 처리 중 오류: {str(e)}")
-                st.error(f"❌ 처리 중 오류가 발생했습니다: {str(e)}")
-                st.error("관리자에게 문의해주세요.")
 
 # 페이지 하단 정보
 st.sidebar.markdown("---")
