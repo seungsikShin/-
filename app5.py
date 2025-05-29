@@ -921,7 +921,146 @@ def send_email(subject, body, to_email, attachments=None) -> Tuple[bool, str]:
         error_msg = f"이메일 발송 오류: {str(e)}"
         logger.error(error_msg)
         return False, error_msg
+def save_submission_with_enhanced_info(submission_id, department, manager, phone, contract_name,
+                                     contract_period, contract_amount, contract_method, budget_item,
+                                     status="접수중", email_sent=0) -> bool:
+    """
+    확장된 접수 내역과 추가 정보를 데이터베이스에 저장합니다.
+    """
+    try:
+        conn = sqlite3.connect('audit_system.db')
+        c = conn.cursor()
 
+        # 테이블에 새 컬럼이 없다면 추가 (기존 테이블 구조 확장)
+        try:
+            c.execute("ALTER TABLE submissions ADD COLUMN contract_method TEXT")
+        except sqlite3.OperationalError:
+            pass  # 컬럼이 이미 존재하는 경우
+
+        try:
+            c.execute("ALTER TABLE submissions ADD COLUMN budget_item TEXT")
+        except sqlite3.OperationalError:
+            pass  # 컬럼이 이미 존재하는 경우
+
+        c.execute('''
+        INSERT OR REPLACE INTO submissions
+        (submission_date, submission_id, department, manager, phone, contract_name,
+         contract_date, contract_amount, contract_method, budget_item, status, email_sent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (upload_date, submission_id, department, manager, phone, contract_name,
+              contract_period, contract_amount, contract_method, budget_item, status, email_sent))
+
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"DB 확장 정보 저장 오류: {str(e)}")
+        return False
+
+def generate_audit_report_with_enhanced_content(submission_id, department, manager, phone, contract_name,
+                                              contract_period, contract_amount, contract_method, budget_item,
+                                              uploaded_files, missing_files_with_reasons) -> Optional[str]:
+    """
+    확장된 접수 정보를 활용한 GPT 감사보고서 생성
+    """
+    try:
+        # 제출 자료의 실제 내용 추출 (기존 로직 유지)
+        uploaded_content = ""
+        if uploaded_files:
+            uploaded_content = "## 제출된 자료 및 실제 내용\n\n"
+            
+            conn = sqlite3.connect('audit_system.db')
+            c = conn.cursor()
+            
+            for file_name in uploaded_files:
+                c.execute("SELECT file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
+                         (submission_id, f"%{file_name.split(' - ')[0]}%"))
+                result = c.fetchone()
+                
+                if result and os.path.exists(result[0]):
+                    file_content = extract_file_content(result[0])
+                    uploaded_content += f"### 📄 {file_name}\n"
+                    uploaded_content += f"**파일 내용:**\n```\n{file_content}\n```\n\n"
+                else:
+                    uploaded_content += f"### 📄 {file_name}\n**상태:** 파일 내용 읽기 실패\n\n"
+            
+            conn.close()
+        else:
+            uploaded_content = "제출된 자료: 없음\n\n"
+        
+        # 누락 자료 정리 (기존 로직 유지)
+        missing_content = ""
+        if missing_files_with_reasons:
+            missing_content = "## 누락된 자료 및 사유\n\n"
+            missing_content += "\n".join([f"- **{name}**: {reason}" for name, reason in missing_files_with_reasons])
+        else:
+            missing_content = "누락된 자료: 없음\n\n"
+        
+        # 확장된 접수 정보를 포함한 프롬프트
+        user_message = f"""
+일상감사 보고서 초안을 작성해주세요.
+
+## 📋 계약 기본 정보
+**접수 ID**: {submission_id}
+**접수 부서**: {department}  
+**담당자**: {manager} (연락처: {phone})
+**계약명**: {contract_name}
+**계약 기간**: {contract_period}
+**계약금액**: {contract_amount}
+**계약방식**: {contract_method}
+**예산과목**: {budget_item}
+
+{uploaded_content}
+
+{missing_content}
+
+## 📝 보고서 작성 요청사항
+위의 확장된 계약 정보와 실제 문서 내용을 종합적으로 분석하여 전문적인 일상감사 보고서 초안을 작성해주세요.
+
+특히 다음 사항들을 중점적으로 검토해주세요:
+1. **계약방식의 적정성**: {contract_method} 방식 적용의 타당성
+2. **예산과목 일치성**: {budget_item} 과목 사용의 적절성  
+3. **계약기간의 합리성**: {contract_period} 기간 설정의 타당성
+4. **제출서류의 완성도**: 업로드된 문서들의 법적 요건 충족 여부
+5. **누락서류의 영향도**: 미제출 서류로 인한 감사 제약사항
+
+실제 제출된 문서의 구체적인 내용을 인용하고 분석하여 실질적이고 전문적인 검토 의견을 제시해주세요.
+"""
+        
+        # GPT 응답 받기 (기존 로직 유지)
+        answer, success = get_clean_answer_from_gpts(user_message)
+        if not success:
+            return None
+
+        # 보고서 파일 저장 (기존 로직 유지)
+        report_folder = os.path.join(base_folder, "draft_reports")
+        os.makedirs(report_folder, exist_ok=True)
+        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.txt")
+        
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write("일상감사 보고서 초안\n")
+            f.write("=" * 80 + "\n\n")
+            f.write(f"📋 접수 정보\n")
+            f.write("-" * 40 + "\n")
+            f.write(f"접수 ID: {submission_id}\n")
+            f.write(f"접수 부서: {department}\n")  
+            f.write(f"담당자: {manager} ({phone})\n")
+            f.write(f"계약명: {contract_name}\n")
+            f.write(f"계약 기간: {contract_period}\n")
+            f.write(f"계약금액: {contract_amount}\n")
+            f.write(f"계약방식: {contract_method}\n")
+            f.write(f"예산과목: {budget_item}\n\n")
+            f.write("=" * 80 + "\n\n")
+            f.write("📝 감사 의견\n")
+            f.write("-" * 40 + "\n\n")
+            f.write(answer)
+        
+        logger.info(f"확장된 정보 기반 감사보고서 생성 완료: {report_path}")
+        return report_path
+
+    except Exception as e:
+        logger.error(f"확장된 GPT 보고서 생성 오류: {str(e)}")
+        return None
 # 데이터베이스 초기화
 init_db()
 
@@ -1745,144 +1884,3 @@ elif st.session_state["page"] == "접수 완료":
                     st.error(f"❌ 이메일 발송 중 오류가 발생했습니다: {message}")
 
     conn.close()
-
-def save_submission_with_enhanced_info(submission_id, department, manager, phone, contract_name,
-                                     contract_period, contract_amount, contract_method, budget_item,
-                                     status="접수중", email_sent=0) -> bool:
-    """
-    확장된 접수 내역과 추가 정보를 데이터베이스에 저장합니다.
-    """
-    try:
-        conn = sqlite3.connect('audit_system.db')
-        c = conn.cursor()
-
-        # 테이블에 새 컬럼이 없다면 추가 (기존 테이블 구조 확장)
-        try:
-            c.execute("ALTER TABLE submissions ADD COLUMN contract_method TEXT")
-        except sqlite3.OperationalError:
-            pass  # 컬럼이 이미 존재하는 경우
-
-        try:
-            c.execute("ALTER TABLE submissions ADD COLUMN budget_item TEXT")
-        except sqlite3.OperationalError:
-            pass  # 컬럼이 이미 존재하는 경우
-
-        c.execute('''
-        INSERT OR REPLACE INTO submissions
-        (submission_date, submission_id, department, manager, phone, contract_name,
-         contract_date, contract_amount, contract_method, budget_item, status, email_sent)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (upload_date, submission_id, department, manager, phone, contract_name,
-              contract_period, contract_amount, contract_method, budget_item, status, email_sent))
-
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        logger.error(f"DB 확장 정보 저장 오류: {str(e)}")
-        return False
-
-def generate_audit_report_with_enhanced_content(submission_id, department, manager, phone, contract_name,
-                                              contract_period, contract_amount, contract_method, budget_item,
-                                              uploaded_files, missing_files_with_reasons) -> Optional[str]:
-    """
-    확장된 접수 정보를 활용한 GPT 감사보고서 생성
-    """
-    try:
-        # 제출 자료의 실제 내용 추출 (기존 로직 유지)
-        uploaded_content = ""
-        if uploaded_files:
-            uploaded_content = "## 제출된 자료 및 실제 내용\n\n"
-            
-            conn = sqlite3.connect('audit_system.db')
-            c = conn.cursor()
-            
-            for file_name in uploaded_files:
-                c.execute("SELECT file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?", 
-                         (submission_id, f"%{file_name.split(' - ')[0]}%"))
-                result = c.fetchone()
-                
-                if result and os.path.exists(result[0]):
-                    file_content = extract_file_content(result[0])
-                    uploaded_content += f"### 📄 {file_name}\n"
-                    uploaded_content += f"**파일 내용:**\n```\n{file_content}\n```\n\n"
-                else:
-                    uploaded_content += f"### 📄 {file_name}\n**상태:** 파일 내용 읽기 실패\n\n"
-            
-            conn.close()
-        else:
-            uploaded_content = "제출된 자료: 없음\n\n"
-        
-        # 누락 자료 정리 (기존 로직 유지)
-        missing_content = ""
-        if missing_files_with_reasons:
-            missing_content = "## 누락된 자료 및 사유\n\n"
-            missing_content += "\n".join([f"- **{name}**: {reason}" for name, reason in missing_files_with_reasons])
-        else:
-            missing_content = "누락된 자료: 없음\n\n"
-        
-        # 확장된 접수 정보를 포함한 프롬프트
-        user_message = f"""
-일상감사 보고서 초안을 작성해주세요.
-
-## 📋 계약 기본 정보
-**접수 ID**: {submission_id}
-**접수 부서**: {department}  
-**담당자**: {manager} (연락처: {phone})
-**계약명**: {contract_name}
-**계약 기간**: {contract_period}
-**계약금액**: {contract_amount}
-**계약방식**: {contract_method}
-**예산과목**: {budget_item}
-
-{uploaded_content}
-
-{missing_content}
-
-## 📝 보고서 작성 요청사항
-위의 확장된 계약 정보와 실제 문서 내용을 종합적으로 분석하여 전문적인 일상감사 보고서 초안을 작성해주세요.
-
-특히 다음 사항들을 중점적으로 검토해주세요:
-1. **계약방식의 적정성**: {contract_method} 방식 적용의 타당성
-2. **예산과목 일치성**: {budget_item} 과목 사용의 적절성  
-3. **계약기간의 합리성**: {contract_period} 기간 설정의 타당성
-4. **제출서류의 완성도**: 업로드된 문서들의 법적 요건 충족 여부
-5. **누락서류의 영향도**: 미제출 서류로 인한 감사 제약사항
-
-실제 제출된 문서의 구체적인 내용을 인용하고 분석하여 실질적이고 전문적인 검토 의견을 제시해주세요.
-"""
-        
-        # GPT 응답 받기 (기존 로직 유지)
-        answer, success = get_clean_answer_from_gpts(user_message)
-        if not success:
-            return None
-
-        # 보고서 파일 저장 (기존 로직 유지)
-        report_folder = os.path.join(base_folder, "draft_reports")
-        os.makedirs(report_folder, exist_ok=True)
-        report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.txt")
-        
-        with open(report_path, 'w', encoding='utf-8') as f:
-            f.write("일상감사 보고서 초안\n")
-            f.write("=" * 80 + "\n\n")
-            f.write(f"📋 접수 정보\n")
-            f.write("-" * 40 + "\n")
-            f.write(f"접수 ID: {submission_id}\n")
-            f.write(f"접수 부서: {department}\n")  
-            f.write(f"담당자: {manager} ({phone})\n")
-            f.write(f"계약명: {contract_name}\n")
-            f.write(f"계약 기간: {contract_period}\n")
-            f.write(f"계약금액: {contract_amount}\n")
-            f.write(f"계약방식: {contract_method}\n")
-            f.write(f"예산과목: {budget_item}\n\n")
-            f.write("=" * 80 + "\n\n")
-            f.write("📝 감사 의견\n")
-            f.write("-" * 40 + "\n\n")
-            f.write(answer)
-        
-        logger.info(f"확장된 정보 기반 감사보고서 생성 완료: {report_path}")
-        return report_path
-
-    except Exception as e:
-        logger.error(f"확장된 GPT 보고서 생성 오류: {str(e)}")
-        return None
