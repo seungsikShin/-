@@ -961,10 +961,10 @@ def generate_audit_report_with_enhanced_content(submission_id, department, manag
                                               contract_period, contract_amount, contract_method, budget_item,
                                               uploaded_files, missing_files_with_reasons) -> Optional[str]:
     """
-    확장된 접수 정보를 활용한 GPT 감사보고서 생성
+    1번과 2번 보고서의 장점을 결합한 확장된 접수 정보를 활용한 GPT 감사보고서 생성
     """
     try:
-        # 제출 자료의 실제 내용 추출 (기존 로직 유지)
+        # 제출 자료의 실제 내용 추출
         uploaded_content = ""
         if uploaded_files:
             uploaded_content = "## 제출된 자료 및 실제 내용\n\n"
@@ -988,7 +988,7 @@ def generate_audit_report_with_enhanced_content(submission_id, department, manag
         else:
             uploaded_content = "제출된 자료: 없음\n\n"
         
-        # 누락 자료 정리 (기존 로직 유지)
+        # 누락 자료 정리
         missing_content = ""
         if missing_files_with_reasons:
             missing_content = "## 누락된 자료 및 사유\n\n"
@@ -996,9 +996,9 @@ def generate_audit_report_with_enhanced_content(submission_id, department, manag
         else:
             missing_content = "누락된 자료: 없음\n\n"
         
-        # 확장된 접수 정보를 포함한 프롬프트
+        # 1번과 2번 보고서 장점을 결합한 개선된 프롬프트
         user_message = f"""
-일상감사 보고서 초안을 작성해주세요.
+다음 정보를 기반으로, 전문적이고 실무적인 일상감사 보고서 초안을 작성해주세요.
 
 ## 📋 계약 기본 정보
 **접수 ID**: {submission_id}
@@ -1014,25 +1014,65 @@ def generate_audit_report_with_enhanced_content(submission_id, department, manag
 
 {missing_content}
 
-## 📝 보고서 작성 요청사항
-위의 확장된 계약 정보와 실제 문서 내용을 종합적으로 분석하여 전문적인 일상감사 보고서 초안을 작성해주세요.
+## 📝 보고서 작성 지침
 
-특히 다음 사항들을 중점적으로 검토해주세요:
-1. **계약방식의 적정성**: {contract_method} 방식 적용의 타당성
-2. **예산과목 일치성**: {budget_item} 과목 사용의 적절성  
-3. **계약기간의 합리성**: {contract_period} 기간 설정의 타당성
-4. **제출서류의 완성도**: 업로드된 문서들의 법적 요건 충족 여부
-5. **누락서류의 영향도**: 미제출 서류로 인한 감사 제약사항
+### 🎯 구성 요구사항 (1번 보고서 장점 반영)
+1. **완성도 높은 기본정보 표시** - 모든 접수정보 상세 기재
+2. **체계적 구성** - 사업개요 → 업체선정 → 검토의견 → 최종의견 순서
+3. **전문적 법규 인용** - 구체적인 조항명과 규정 번호 명시
+4. **상세한 분석** - 각 항목별 심층 검토 및 권고사항 제시
 
-실제 제출된 문서의 구체적인 내용을 인용하고 분석하여 실질적이고 전문적인 검토 의견을 제시해주세요.
+### ⚡ 실무적 요소 (2번 보고서 장점 반영)  
+1. **명확한 적정성 판단** - "적정", "일부 부적정", "부적정" 중 명시
+2. **핵심 쟁점 강조** - ■ 기호 사용하여 중요 사항 부각
+3. **필요 추가자료 목록** - 구체적인 보완 서류 명시
+4. **간결한 결론** - 실무진이 즉시 활용 가능한 명확한 지침
+
+### 🔍 중점 검토사항
+**1. 사업 목적의 타당성**
+- 계약방식({contract_method})의 적절성 검증
+- 예산과목({budget_item}) 사용의 정당성 평가
+
+**2. 업체 선정의 투명성**  
+- 입찰 절차의 공정성 검토
+- 일상감사 매뉴얼 관련 조항 적용 여부
+
+**3. 예산 운용의 적정성**
+- 계약금액과 예산 배정액 비교 분석
+- 예산 초과 시 승인 절차 이행 여부
+
+**4. 계약 조건의 완전성**
+- 납기, 이행보증, 위약금 등 필수 조항 검토
+- 리스크 요소 및 대응방안 평가
+
+### 📋 보고서 형식 요구사항
+```
+■ 사업개요
+■ 업체 선정절차  
+■ 검토의견: [적정/일부 부적정/부적정]
+  - **사업 목적 검토**: (구체적 분석)
+  - **업체 선정 검토**: (투명성 평가)  
+  - **예산 검토**: (적정성 검증)
+  - **계약서 검토**: (조건 완전성)
+■ 최종 의견
+■ 필요한 추가 자료: (구체적 목록)
+```
+
+### ⚖️ 작성 원칙
+- **객관적 사실 기반 분석**: 제출 문서 내용을 구체적으로 인용
+- **법적 근거 명시**: 관련 규정 및 매뉴얼 조항 정확히 인용  
+- **건설적 권고**: 문제점 지적과 함께 개선방안 제시
+- **실무 활용성**: 담당자가 즉시 후속조치 가능한 명확한 지침
+
+실제 제출된 문서의 구체적인 내용을 분석하여, 전문성과 실무성을 겸비한 고품질 감사보고서를 작성해주세요.
 """
         
-        # GPT 응답 받기 (기존 로직 유지)
+        # GPT 응답 받기
         answer, success = get_clean_answer_from_gpts(user_message)
         if not success:
             return None
 
-        # 보고서 파일 저장 (기존 로직 유지)
+        # 보고서 파일 저장 (개선된 헤더 포함)
         report_folder = os.path.join(base_folder, "draft_reports")
         os.makedirs(report_folder, exist_ok=True)
         report_path = os.path.join(report_folder, f"감사보고서초안_{submission_id}.txt")
@@ -1055,11 +1095,11 @@ def generate_audit_report_with_enhanced_content(submission_id, department, manag
             f.write("-" * 40 + "\n\n")
             f.write(answer)
         
-        logger.info(f"확장된 정보 기반 감사보고서 생성 완료: {report_path}")
+        logger.info(f"개선된 정보 기반 감사보고서 생성 완료: {report_path}")
         return report_path
 
     except Exception as e:
-        logger.error(f"확장된 GPT 보고서 생성 오류: {str(e)}")
+        logger.error(f"개선된 GPT 보고서 생성 오류: {str(e)}")
         return None
 # 데이터베이스 초기화
 init_db()
