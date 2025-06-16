@@ -2,6 +2,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 import random
+import json
+import os
 
 # 페이지 설정
 st.set_page_config(
@@ -9,6 +11,9 @@ st.set_page_config(
     page_icon="🎯",
     layout="wide"
 )
+
+# 데이터 저장 경로
+DATA_FILE = "weekly_schedule.json"
 
 def get_monday_of_week(date=None):
     """주어진 날짜의 주 월요일 날짜 반환"""
@@ -18,18 +23,92 @@ def get_monday_of_week(date=None):
     monday = date - timedelta(days=days_since_monday)
     return monday.date()
 
+def save_weekly_data(schedule_data):
+    """주간 데이터를 파일에 저장"""
+    try:
+        data = {
+            'weekly_schedule': schedule_data,
+            'schedule_week': get_monday_of_week().isoformat(),
+            'schedule_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'created_timestamp': datetime.now().isoformat()
+        }
+        
+        # Streamlit Cloud에서는 파일 쓰기 권한이 제한적이므로 
+        # 임시 디렉토리나 메모리 기반 저장 시도
+        try:
+            with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            return True
+        except:
+            # 파일 저장 실패 시 session_state로 폴백
+            st.session_state.persistent_data = data
+            return False
+    except Exception as e:
+        st.error(f"데이터 저장 중 오류: {e}")
+        return False
+
+def load_weekly_data():
+    """주간 데이터를 파일에서 로드"""
+    try:
+        # 먼저 파일에서 로드 시도
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                
+            # 주차 확인
+            stored_week = datetime.fromisoformat(data['schedule_week']).date()
+            current_week = get_monday_of_week()
+            
+            if stored_week == current_week:
+                return data
+            else:
+                # 오래된 데이터 삭제
+                os.remove(DATA_FILE)
+                return None
+        
+        # 파일이 없으면 session_state에서 확인
+        elif 'persistent_data' in st.session_state:
+            data = st.session_state.persistent_data
+            stored_week = datetime.fromisoformat(data['schedule_week']).date()
+            current_week = get_monday_of_week()
+            
+            if stored_week == current_week:
+                return data
+            else:
+                del st.session_state.persistent_data
+                return None
+                
+    except Exception as e:
+        st.error(f"데이터 로드 중 오류: {e}")
+        return None
+    
+    return None
+
 def is_new_week():
     """새로운 주인지 확인"""
     current_monday = get_monday_of_week()
     
-    if 'schedule_week' not in st.session_state:
+    # 저장된 데이터 확인
+    saved_data = load_weekly_data()
+    if saved_data is None:
         return True
         
-    stored_monday = st.session_state.schedule_week
+    stored_monday = datetime.fromisoformat(saved_data['schedule_week']).date()
     return current_monday != stored_monday
 
 def reset_weekly_data():
     """주간 데이터 초기화"""
+    # 파일 삭제
+    if os.path.exists(DATA_FILE):
+        try:
+            os.remove(DATA_FILE)
+        except:
+            pass
+    
+    # session_state 초기화
+    if 'persistent_data' in st.session_state:
+        del st.session_state.persistent_data
+    
     st.session_state.weekly_schedule = None
     st.session_state.schedule_week = get_monday_of_week()
     st.session_state.schedule_date = None
@@ -68,15 +147,22 @@ def conduct_lottery(member_names, item_labels):
     
     return results
 
-# 세션 상태 초기화
-if 'weekly_schedule' not in st.session_state:
-    st.session_state.weekly_schedule = None
-    
-if 'schedule_week' not in st.session_state:
-    st.session_state.schedule_week = None
-    
-if 'schedule_date' not in st.session_state:
-    st.session_state.schedule_date = None
+# 앱 시작 시 데이터 로드
+saved_data = load_weekly_data()
+if saved_data:
+    st.session_state.weekly_schedule = saved_data['weekly_schedule']
+    st.session_state.schedule_week = datetime.fromisoformat(saved_data['schedule_week']).date()
+    st.session_state.schedule_date = saved_data['schedule_date']
+else:
+    # 세션 상태 초기화
+    if 'weekly_schedule' not in st.session_state:
+        st.session_state.weekly_schedule = None
+        
+    if 'schedule_week' not in st.session_state:
+        st.session_state.schedule_week = None
+        
+    if 'schedule_date' not in st.session_state:
+        st.session_state.schedule_date = None
 
 # 새로운 주 체크 및 초기화
 if is_new_week():
@@ -197,11 +283,19 @@ if st.session_state.weekly_schedule is None:
                 # 제비뽑기 수행
                 results = conduct_lottery(member_names, item_labels)
                 
-                # 결과 저장
+                # 결과 저장 (파일 + session_state)
+                save_success = save_weekly_data(results)
+                
+                # session_state에도 저장 (즉시 표시용)
                 st.session_state.weekly_schedule = results
                 st.session_state.schedule_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                st.session_state.schedule_week = get_monday_of_week()
                 
-                st.success("✅ 제비뽑기가 완료되었습니다!")
+                if save_success:
+                    st.success("✅ 제비뽑기가 완료되고 파일에 저장되었습니다! (새로고침해도 유지)")
+                else:
+                    st.warning("✅ 제비뽑기가 완료되었습니다! (파일 저장 실패 - 세션만 유지)")
+                
                 st.rerun()
     else:
         st.warning("모든 참여자의 이름을 입력해주세요.")
@@ -252,8 +346,8 @@ with st.sidebar:
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🔄 재뽑기", help="새로운 제비뽑기 진행", use_container_width=True):
-                st.session_state.weekly_schedule = None
-                st.session_state.schedule_date = None
+                # 파일과 세션 모두 초기화
+                reset_weekly_data()
                 st.rerun()
         
         with col2:
@@ -300,11 +394,51 @@ with st.sidebar:
     
     # 수동 초기화 버튼 (관리자용)
     if st.button("🗑️ 결과 삭제", help="관리자용 - 저장된 결과를 즉시 삭제합니다", type="secondary"):
-        st.session_state.weekly_schedule = None
-        st.session_state.schedule_date = None
-        st.success("결과가 삭제되었습니다!")
+        reset_weekly_data()
+        st.success("결과가 완전히 삭제되었습니다!")
         st.rerun()
+    
+    # 저장 상태 표시
+    st.divider()
+    st.markdown("### 💾 저장 상태")
+    
+    file_exists = os.path.exists(DATA_FILE)
+    session_exists = 'persistent_data' in st.session_state
+    
+    if file_exists:
+        st.success("📁 파일 저장됨 (영구)")
+    elif session_exists:
+        st.warning("💭 세션 저장됨 (임시)")
+    else:
+        st.info("❌ 저장된 데이터 없음")
+    
+    # 저장 방식 설명
+    with st.expander("💡 저장 방식 설명"):
+        st.markdown("""
+        **🏆 이상적인 경우 (파일 저장)**
+        - `weekly_schedule.json` 파일로 저장
+        - 새로고침, 브라우저 종료해도 유지
+        - 주차 종료까지 완전 보존
+        
+        **⚠️ 제한적인 경우 (세션 저장)**  
+        - 메모리에만 임시 저장
+        - 브라우저 종료 시 사라질 수 있음
+        - Streamlit Cloud 제약 환경
+        
+        **📋 권장사항**
+        - 중요한 결과는 '📤 공유' 버튼으로 백업
+        - 매주 월요일에 자동 초기화됨
+        """)
 
 # 푸터
 st.markdown("---")
 st.markdown("🎯 **점심시간 제비뽑기** - 매주 공정하고 재미있는 시간 배정을 위해")
+
+# 개발자 정보 (숨김)
+with st.expander("🔧 개발자 정보"):
+    st.markdown(f"""
+    **버전**: 2.0 (영구저장 지원)  
+    **데이터 파일**: `{DATA_FILE}`  
+    **현재 주차**: {get_monday_of_week()}  
+    **저장 상태**: {'파일' if os.path.exists(DATA_FILE) else '세션' if 'persistent_data' in st.session_state else '없음'}
+    """)
