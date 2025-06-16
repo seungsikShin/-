@@ -158,154 +158,33 @@ if st.session_state.weekly_schedule is None:
             name = st.text_input(f"{i+1}번", key=f"member_{i}", placeholder="이름 입력")
             member_names.append(name)
     
-    # 쪽지 상태를 시각적으로 표시
+    # 쪽지 상태를 시각적으로 표시 (간단한 방식)
     st.markdown("##### 쪽지 현황")
     
-    # 색상 배열 (이미지와 비슷한 색상)
-    colors = [
-        ("#8BC34A", "#689F38"),  # 초록
-        ("#FF7043", "#E64A19"),  # 주황-빨강
-        ("#FFC107", "#F57F17"),  # 노랑
-        ("#42A5F5", "#1976D2"),  # 파랑
-        ("#9E9E9E", "#616161"),  # 회색
-    ]
+    # 색상과 이모지로 간단하게 표현
+    colors = ["🟢", "🔴", "🟡", "🔵", "⚫"]
     
     # 쪽지들을 그리드로 표시
     ticket_cols = st.columns(min(5, members))
     
     for i in range(members):
         col_idx = i % len(ticket_cols)
-        color_primary, color_secondary = colors[i % len(colors)]
-        
         with ticket_cols[col_idx]:
             name = member_names[i]
+            color_emoji = colors[i % len(colors)]
+            
             if name.strip():
-                # 이름이 입력된 화살표 쪽지
+                # 이름이 입력된 쪽지
                 st.markdown(f"""
-                <div style="
-                    position: relative;
-                    width: 80px;
-                    height: 100px;
-                    margin: 10px auto;
-                ">
-                    <!-- 화살표 모양 -->
-                    <div style="
-                        position: relative;
-                        width: 70px;
-                        height: 90px;
-                        background: linear-gradient(135deg, {color_primary}, {color_secondary});
-                        clip-path: polygon(0% 0%, 80% 0%, 100% 50%, 80% 100%, 0% 100%, 20% 50%);
-                        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-                        transform: rotate(-5deg);
-                    ">
-                        <!-- 번호 -->
-                        <div style="
-                            position: absolute;
-                            top: 15px;
-                            left: 50%;
-                            transform: translateX(-50%);
-                            background: white;
-                            border-radius: 50%;
-                            width: 24px;
-                            height: 24px;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            font-weight: bold;
-                            font-size: 14px;
-                            color: #333;
-                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                        ">{i+1}</div>
-                        
-                        <!-- 이름 -->
-                        <div style="
-                            position: absolute;
-                            bottom: 15px;
-                            left: 50%;
-                            transform: translateX(-50%);
-                            background: rgba(255,255,255,0.95);
-                            border-radius: 4px;
-                            padding: 3px 6px;
-                            font-size: 10px;
-                            font-weight: bold;
-                            color: #333;
-                            word-break: break-all;
-                            text-align: center;
-                            max-width: 50px;
-                            line-height: 1.1;
-                        ">{name}</div>
-                    </div>
-                    
-                    <!-- 완료 체크마크 -->
-                    <div style="
-                        position: absolute;
-                        top: -5px;
-                        right: 5px;
-                        background: #4CAF50;
-                        color: white;
-                        border-radius: 50%;
-                        width: 20px;
-                        height: 20px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-size: 12px;
-                        font-weight: bold;
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                    ">✓</div>
-                </div>
-                """, unsafe_allow_html=True)
+                **{color_emoji} {i+1}번**  
+                ✅ **{name}**
+                """)
             else:
-                # 빈 화살표 쪽지 (회색)
+                # 빈 쪽지
                 st.markdown(f"""
-                <div style="
-                    position: relative;
-                    width: 80px;
-                    height: 100px;
-                    margin: 10px auto;
-                ">
-                    <!-- 회색 화살표 -->
-                    <div style="
-                        position: relative;
-                        width: 70px;
-                        height: 90px;
-                        background: linear-gradient(135deg, #E0E0E0, #BDBDBD);
-                        clip-path: polygon(0% 0%, 80% 0%, 100% 50%, 80% 100%, 0% 100%, 20% 50%);
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                        transform: rotate(-5deg);
-                    ">
-                        <!-- 번호 -->
-                        <div style="
-                            position: absolute;
-                            top: 15px;
-                            left: 50%;
-                            transform: translateX(-50%);
-                            background: #f5f5f5;
-                            border-radius: 50%;
-                            width: 24px;
-                            height: 24px;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            font-weight: bold;
-                            font-size: 14px;
-                            color: #666;
-                        ">{i+1}</div>
-                        
-                        <!-- 대기 텍스트 -->
-                        <div style="
-                            position: absolute;
-                            bottom: 15px;
-                            left: 50%;
-                            transform: translateX(-50%);
-                            color: #999;
-                            font-size: 9px;
-                            font-style: italic;
-                            text-align: center;
-                        ">대기중</div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+                ⚪ **{i+1}번**  
+                ⏳ *대기중*
+                """)
     
     # 입력 상태 확인
     filled_names = [name for name in member_names if name.strip()]
@@ -340,16 +219,90 @@ with st.sidebar:
     🔄 **매주 월요일에 자동으로 초기화됩니다**
     """)
     
-    st.markdown("### 🛠️ 현재 상태")
-    if st.session_state.weekly_schedule:
-        st.success("✅ 이번 주 결과 저장됨")
-    else:
-        st.info("⏳ 제비뽑기 대기 중")
+    st.divider()
     
-    # 수동 초기화 버튼 (테스트용)
-    if st.button("🗑️ 결과 초기화", help="테스트용 - 저장된 결과를 삭제합니다"):
+    # 현재 주차 결과 표시
+    st.markdown("### 📋 이번 주 결과")
+    
+    if st.session_state.weekly_schedule:
+        # 저장된 결과가 있는 경우
+        st.success("✅ 제비뽑기 완료")
+        
+        # 컴팩트한 결과 표시
+        for idx, item in enumerate(st.session_state.weekly_schedule):
+            # 각 항목별로 표시
+            if item['members']:
+                st.markdown(f"**🏆 {item['label']}**")
+                for member in item['members']:
+                    colors = ["🟢", "🔴", "🟡", "🔵", "⚫"]
+                    color_emoji = colors[(member['index']-1) % len(colors)]
+                    st.markdown(f"  {color_emoji} **{member['name']}** ({member['index']}번)")
+            else:
+                st.markdown(f"**{item['label']}**: *없음*")
+        
+        # 생성 시간
+        if st.session_state.schedule_date:
+            st.caption(f"📅 {st.session_state.schedule_date}")
+        
+        st.divider()
+        
+        # 빠른 수정 버튼들
+        st.markdown("**⚡ 빠른 작업**")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 재뽑기", help="새로운 제비뽑기 진행", use_container_width=True):
+                st.session_state.weekly_schedule = None
+                st.session_state.schedule_date = None
+                st.rerun()
+        
+        with col2:
+            if st.button("📤 공유", help="결과를 복사용 텍스트로 생성", use_container_width=True):
+                # 결과를 텍스트로 변환
+                share_text = f"📋 이번 주 점심시간 제비뽑기 결과\n"
+                share_text += f"📅 {st.session_state.schedule_date}\n\n"
+                
+                for item in st.session_state.weekly_schedule:
+                    share_text += f"🏆 {item['label']}\n"
+                    if item['members']:
+                        for member in item['members']:
+                            share_text += f"  • {member['name']} ({member['index']}번)\n"
+                    else:
+                        share_text += "  • 배정된 인원 없음\n"
+                    share_text += "\n"
+                
+                st.text_area("📋 공유용 텍스트", share_text, height=200)
+    
+    else:
+        # 저장된 결과가 없는 경우
+        st.info("⏳ 제비뽑기 대기 중")
+        st.markdown("아직 이번 주 제비뽑기를 진행하지 않았습니다.")
+    
+    st.divider()
+    
+    # 상태 및 관리
+    st.markdown("### 🛠️ 시스템 상태")
+    
+    # 현재 주차 정보
+    current_monday = get_monday_of_week()
+    current_sunday = current_monday + timedelta(days=6)
+    st.markdown(f"""
+    **현재 주차**  
+    {current_monday.strftime('%m/%d')} ~ {current_sunday.strftime('%m/%d')}
+    """)
+    
+    # 다음 초기화 시간
+    next_monday = current_monday + timedelta(days=7)
+    st.markdown(f"""
+    **다음 초기화**  
+    {next_monday.strftime('%Y-%m-%d')} (월요일)
+    """)
+    
+    # 수동 초기화 버튼 (관리자용)
+    if st.button("🗑️ 결과 삭제", help="관리자용 - 저장된 결과를 즉시 삭제합니다", type="secondary"):
         st.session_state.weekly_schedule = None
         st.session_state.schedule_date = None
+        st.success("결과가 삭제되었습니다!")
         st.rerun()
 
 # 푸터
