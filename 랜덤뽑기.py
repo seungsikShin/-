@@ -148,7 +148,125 @@ if st.session_state.weekly_schedule is None:
     # 이름 입력 영역
     st.markdown("#### 참여자 이름 입력")
     
+    # 쪽지 스타일 CSS
+    st.markdown("""
+    <style>
+    .ticket-container {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 20px;
+        margin: 20px 0;
+    }
+    .ticket {
+        position: relative;
+        width: 100px;
+        height: 130px;
+        background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+        border: 2px solid #dee2e6;
+        border-radius: 12px 12px 0 0;
+        transform: rotate(1deg);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+    }
+    .ticket.filled {
+        background: linear-gradient(135deg, #FFD93D, #FFC107);
+        transform: rotate(1deg) scale(1.05);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+    }
+    .ticket::before {
+        content: '';
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 8px;
+        height: 8px;
+        background: white;
+        border-radius: 50%;
+        box-shadow: -15px 0 white, 15px 0 white;
+    }
+    .ticket-number {
+        position: absolute;
+        top: 25px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 30px;
+        height: 30px;
+        background: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 16px;
+        color: #333;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .ticket-name {
+        position: absolute;
+        top: 65px;
+        left: 8px;
+        right: 8px;
+        text-align: center;
+        font-size: 11px;
+        font-weight: bold;
+        color: #333;
+        background: rgba(255,255,255,0.9);
+        border-radius: 4px;
+        padding: 4px 2px;
+        word-break: break-all;
+        line-height: 1.2;
+    }
+    .ticket-check {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        width: 20px;
+        height: 20px;
+        background: #28a745;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .ticket-shadow {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        width: 100px;
+        height: 130px;
+        background: rgba(0,0,0,0.1);
+        border-radius: 12px 12px 0 0;
+        transform: rotate(-1deg);
+        z-index: -1;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # 쪽지들 표시
+    ticket_html = '<div class="ticket-container">'
+    
+    for i in range(members):
+        ticket_html += f'''
+        <div style="text-align: center;">
+            <div class="ticket-shadow"></div>
+            <div class="ticket" id="ticket-{i}">
+                <div class="ticket-number">{i+1}</div>
+                <div class="ticket-name" id="name-{i}">이름 대기중</div>
+            </div>
+        </div>
+        '''
+    
+    ticket_html += '</div>'
+    
+    st.markdown(ticket_html, unsafe_allow_html=True)
+    
     # 이름 입력 그리드
+    st.markdown("##### 각 번호에 해당하는 이름을 입력하세요")
     name_cols = st.columns(min(5, members))  # 최대 5열로 제한
     member_names = []
     
@@ -157,6 +275,31 @@ if st.session_state.weekly_schedule is None:
         with name_cols[col_idx]:
             name = st.text_input(f"{i+1}번", key=f"member_{i}", placeholder="이름 입력")
             member_names.append(name)
+    
+    # JavaScript로 실시간 쪽지 업데이트
+    filled_names = [name if name.strip() else "" for name in member_names]
+    
+    update_script = """
+    <script>
+    """
+    
+    for i, name in enumerate(filled_names):
+        if name:
+            update_script += f"""
+            document.getElementById('ticket-{i}').classList.add('filled');
+            document.getElementById('name-{i}').innerHTML = '{name}';
+            """
+        else:
+            update_script += f"""
+            document.getElementById('ticket-{i}').classList.remove('filled');
+            document.getElementById('name-{i}').innerHTML = '이름 대기중';
+            """
+    
+    update_script += """
+    </script>
+    """
+    
+    st.markdown(update_script, unsafe_allow_html=True)
     
     # 입력 상태 확인
     filled_names = [name for name in member_names if name.strip()]
