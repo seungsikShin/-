@@ -161,120 +161,148 @@ if st.session_state.weekly_schedule is None:
     # 쪽지 상태를 시각적으로 표시
     st.markdown("##### 쪽지 현황")
     
+    # 색상 배열 (이미지와 비슷한 색상)
+    colors = [
+        ("#8BC34A", "#689F38"),  # 초록
+        ("#FF7043", "#E64A19"),  # 주황-빨강
+        ("#FFC107", "#F57F17"),  # 노랑
+        ("#42A5F5", "#1976D2"),  # 파랑
+        ("#9E9E9E", "#616161"),  # 회색
+    ]
+    
     # 쪽지들을 그리드로 표시
     ticket_cols = st.columns(min(5, members))
     
     for i in range(members):
         col_idx = i % len(ticket_cols)
+        color_primary, color_secondary = colors[i % len(colors)]
+        
         with ticket_cols[col_idx]:
             name = member_names[i]
             if name.strip():
-                # 이름이 입력된 쪽지
+                # 이름이 입력된 화살표 쪽지
                 st.markdown(f"""
                 <div style="
-                    background: linear-gradient(135deg, #FFD93D, #FFC107);
-                    border: 2px solid #F39C12;
-                    border-radius: 12px;
-                    padding: 15px 10px;
-                    text-align: center;
-                    margin: 5px;
-                    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-                    transform: rotate({1 if i%2==0 else -1}deg);
                     position: relative;
+                    width: 80px;
+                    height: 100px;
+                    margin: 10px auto;
                 ">
+                    <!-- 화살표 모양 -->
                     <div style="
-                        background: white;
-                        border-radius: 50%;
-                        width: 25px;
-                        height: 25px;
-                        margin: 0 auto 8px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-weight: bold;
-                        color: #333;
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    ">{i+1}</div>
-                    <div style="
-                        background: rgba(255,255,255,0.9);
-                        border-radius: 6px;
-                        padding: 4px;
-                        font-size: 12px;
-                        font-weight: bold;
-                        color: #333;
-                        word-break: break-all;
-                    ">{name}</div>
+                        position: relative;
+                        width: 70px;
+                        height: 90px;
+                        background: linear-gradient(135deg, {color_primary}, {color_secondary});
+                        clip-path: polygon(0% 0%, 80% 0%, 100% 50%, 80% 100%, 0% 100%, 20% 50%);
+                        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+                        transform: rotate(-5deg);
+                    ">
+                        <!-- 번호 -->
+                        <div style="
+                            position: absolute;
+                            top: 15px;
+                            left: 50%;
+                            transform: translateX(-50%);
+                            background: white;
+                            border-radius: 50%;
+                            width: 24px;
+                            height: 24px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-weight: bold;
+                            font-size: 14px;
+                            color: #333;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        ">{i+1}</div>
+                        
+                        <!-- 이름 -->
+                        <div style="
+                            position: absolute;
+                            bottom: 15px;
+                            left: 50%;
+                            transform: translateX(-50%);
+                            background: rgba(255,255,255,0.95);
+                            border-radius: 4px;
+                            padding: 3px 6px;
+                            font-size: 10px;
+                            font-weight: bold;
+                            color: #333;
+                            word-break: break-all;
+                            text-align: center;
+                            max-width: 50px;
+                            line-height: 1.1;
+                        ">{name}</div>
+                    </div>
+                    
+                    <!-- 완료 체크마크 -->
                     <div style="
                         position: absolute;
                         top: -5px;
-                        right: -5px;
-                        background: #28a745;
+                        right: 5px;
+                        background: #4CAF50;
                         color: white;
                         border-radius: 50%;
-                        width: 18px;
-                        height: 18px;
+                        width: 20px;
+                        height: 20px;
                         display: flex;
                         align-items: center;
                         justify-content: center;
-                        font-size: 10px;
+                        font-size: 12px;
                         font-weight: bold;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
                     ">✓</div>
-                    <div style="
-                        position: absolute;
-                        top: 5px;
-                        left: 50%;
-                        transform: translateX(-50%);
-                        display: flex;
-                        gap: 8px;
-                    ">
-                        <div style="width: 4px; height: 4px; background: white; border-radius: 50%; opacity: 0.8;"></div>
-                        <div style="width: 4px; height: 4px; background: white; border-radius: 50%; opacity: 0.8;"></div>
-                        <div style="width: 4px; height: 4px; background: white; border-radius: 50%; opacity: 0.8;"></div>
-                    </div>
                 </div>
                 """, unsafe_allow_html=True)
             else:
-                # 빈 쪽지
+                # 빈 화살표 쪽지 (회색)
                 st.markdown(f"""
                 <div style="
-                    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-                    border: 2px solid #dee2e6;
-                    border-radius: 12px;
-                    padding: 15px 10px;
-                    text-align: center;
-                    margin: 5px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    transform: rotate({1 if i%2==0 else -1}deg);
                     position: relative;
+                    width: 80px;
+                    height: 100px;
+                    margin: 10px auto;
                 ">
+                    <!-- 회색 화살표 -->
                     <div style="
-                        background: #f1f3f4;
-                        border-radius: 50%;
-                        width: 25px;
-                        height: 25px;
-                        margin: 0 auto 8px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-weight: bold;
-                        color: #666;
-                    ">{i+1}</div>
-                    <div style="
-                        color: #999;
-                        font-size: 10px;
-                        font-style: italic;
-                    ">이름 대기중</div>
-                    <div style="
-                        position: absolute;
-                        top: 5px;
-                        left: 50%;
-                        transform: translateX(-50%);
-                        display: flex;
-                        gap: 8px;
+                        position: relative;
+                        width: 70px;
+                        height: 90px;
+                        background: linear-gradient(135deg, #E0E0E0, #BDBDBD);
+                        clip-path: polygon(0% 0%, 80% 0%, 100% 50%, 80% 100%, 0% 100%, 20% 50%);
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        transform: rotate(-5deg);
                     ">
-                        <div style="width: 4px; height: 4px; background: white; border-radius: 50%; opacity: 0.6;"></div>
-                        <div style="width: 4px; height: 4px; background: white; border-radius: 50%; opacity: 0.6;"></div>
-                        <div style="width: 4px; height: 4px; background: white; border-radius: 50%; opacity: 0.6;"></div>
+                        <!-- 번호 -->
+                        <div style="
+                            position: absolute;
+                            top: 15px;
+                            left: 50%;
+                            transform: translateX(-50%);
+                            background: #f5f5f5;
+                            border-radius: 50%;
+                            width: 24px;
+                            height: 24px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-weight: bold;
+                            font-size: 14px;
+                            color: #666;
+                        ">{i+1}</div>
+                        
+                        <!-- 대기 텍스트 -->
+                        <div style="
+                            position: absolute;
+                            bottom: 15px;
+                            left: 50%;
+                            transform: translateX(-50%);
+                            color: #999;
+                            font-size: 9px;
+                            font-style: italic;
+                            text-align: center;
+                        ">대기중</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
