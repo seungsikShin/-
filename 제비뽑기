@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>점심시간 제비뽑기 🎯</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-10px); }
+            60% { transform: translateY(-5px); }
+        }
+        .bounce { animation: bounce 1s infinite; }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .pulse { animation: pulse 2s infinite; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 헤더 -->
+    <header class="bg-white shadow-sm">
+        <div class="container mx-auto px-4 py-6">
+            <h1 class="text-3xl font-bold text-gray-800 text-center">🎯 점심시간 제비뽑기</h1>
+            <p id="weekInfo" class="text-center text-gray-600 mt-2"></p>
+        </div>
+    </header>
+
+    <div class="container mx-auto px-4 py-8">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <!-- 메인 컨텐츠 -->
+            <div class="lg:col-span-3">
+                <!-- 저장된 결과 표시 영역 -->
+                <div id="savedResults" class="hidden bg-white rounded-lg p-6 shadow-sm mb-8">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-2xl font-bold text-gray-800">🎉 이번 주 제비뽑기 결과</h2>
+                        <div class="flex gap-2">
+                            <button onclick="newLottery()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">🔄 새로 뽑기</button>
+                            <button onclick="shareResults()" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors">📤 공유</button>
+                        </div>
+                    </div>
+                    <div id="resultsContent" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- 결과가 여기에 표시됩니다 -->
+                    </div>
+                    <p id="resultDate" class="text-sm text-gray-500 mt-4"></p>
+                </div>
+
+                <!-- 제비뽑기 설정 영역 -->
+                <div id="lotterySetup" class="bg-white rounded-lg p-6 shadow-sm">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">새로운 제비뽑기</h2>
+                    
+                    <!-- 기본 설정 -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                        <!-- 인원수/항목수 설정 -->
+                        <div class="space-y-6">
+                            <div class="flex items-center justify-center gap-4">
+                                <span class="text-blue-600 font-medium">인원수</span>
+                                <button onclick="changeMembers(-1)" class="w-8 h-8 border border-gray-300 rounded flex items-center justify-center hover:bg-gray-100">−</button>
+                                <span id="memberCount" class="text-xl font-semibold min-w-[3rem] text-center">5명</span>
+                                <button onclick="changeMembers(1)" class="w-8 h-8 border border-gray-300 rounded flex items-center justify-center hover:bg-gray-100">+</button>
+                            </div>
+                            
+                            <div class="flex items-center justify-center gap-4">
+                                <span class="text-blue-600 font-medium">항목수</span>
+                                <button onclick="changeItems(-1)" class="w-8 h-8 border border-gray-300 rounded flex items-center justify-center hover:bg-gray-100">−</button>
+                                <span id="itemCount" class="text-xl font-semibold min-w-[3rem] text-center">2개</span>
+                                <button onclick="changeItems(1)" class="w-8 h-8 border border-gray-300 rounded flex items-center justify-center hover:bg-gray-100">+</button>
+                            </div>
+                        </div>
+                        
+                        <!-- 항목명 설정 -->
+                        <div class="space-y-4">
+                            <label class="block text-sm font-medium text-gray-600">항목명 설정</label>
+                            <div id="itemLabels">
+                                <!-- 동적으로 생성 -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 쪽지 현황 -->
+                    <div class="mb-8">
+                        <h3 class="text-lg font-semibold text-gray-700 mb-4">쪽지 현황</h3>
+                        <div id="ticketsDisplay" class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            <!-- 쪽지들이 여기에 표시됩니다 -->
+                        </div>
+                    </div>
+                    
+                    <!-- 이름 입력 -->
+                    <div class="mb-8">
+                        <h3 class="text-lg font-semibold text-gray-700 mb-4">참여자 이름 입력</h3>
+                        <div id="nameInputs" class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                            <!-- 이름 입력창들이 여기에 표시됩니다 -->
+                        </div>
+                        <p id="inputStatus" class="text-sm text-gray-600 mt-4"></p>
+                    </div>
+                    
+                    <!-- 제비뽑기 실행 -->
+                    <div class="text-center">
+                        <button id="drawButton" onclick="startDraw()" disabled class="px-8 py-3 rounded-lg font-medium text-white bg-gray-400 cursor-not-allowed transition-all duration-200">
+                            🎯 제비뽑기 시작!
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 사이드바 -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-lg p-6 shadow-sm sticky top-8">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">ℹ️ 사용 안내</h3>
+                    <div class="space-y-3 text-sm text-gray-600">
+                        <p>1. <strong>인원수</strong>와 <strong>항목수</strong>를 설정하세요</p>
+                        <p>2. 각 <strong>항목명</strong>을 입력하세요</p>
+                        <p>3. 모든 <strong>참여자 이름</strong>을 입력하세요</p>
+                        <p>4. <strong>제비뽑기 시작</strong> 버튼을 클릭하세요</p>
+                    </div>
+                    
+                    <div class="mt-6 pt-6 border-t border-gray-200">
+                        <h4 class="font-semibold text-gray-800 mb-2">📋 이번 주 결과</h4>
+                        <div id="sidebarResults">
+                            <p class="text-sm text-gray-500">⏳ 제비뽑기 대기 중</p>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 pt-6 border-t border-gray-200">
+                        <h4 class="font-semibold text-gray-800 mb-2">🛠️ 시스템 상태</h4>
+                        <div class="text-sm text-gray-600">
+                            <p id="currentWeek"></p>
+                            <p id="nextReset"></p>
+                            <p id="saveStatus" class="mt-2"></p>
+                        </div>
+                        
+                        <button onclick="clearData()" class="mt-4 w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm">
+                            🗑️ 결과 삭제
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 공유 모달 -->
+    <div id="shareModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-lg font-semibold mb-4">📤 결과 공유</h3>
+            <textarea id="shareText" class="w-full h-48 p-3 border border-gray-300 rounded resize-none" readonly></textarea>
+            <div class="flex gap-2 mt-4">
+                <button onclick="copyToClipboard()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">📋 복사</button>
+                <button onclick="closeShareModal()" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수
+        let members = 5;
+        let items = 2;
+        let memberNames = ['', '', '', '', ''];
+        let itemLabels = ['앞타임', '뒷타임'];
+        let isDrawing = false;
+        let currentResults = null;
+        
+        const colors = ['🟢', '🔴', '🟡', '🔵', '⚫'];
+        const DATA_KEY = 'lunchLotteryData';
+
+        // 유틸리티 함수들
+        function getMondayOfWeek(date = new Date()) {
+            const d = new Date(date);
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+            return new Date(d.setDate(diff));
+        }
+
+        function formatDate(date) {
+            return date.toISOString().split('T')[0];
+        }
+
+        function isNewWeek() {
+            const currentMonday = formatDate(getMondayOfWeek());
+            const savedData = getSavedData();
+            
+            if (!savedData) return true;
+            
+            return savedData.week !== currentMonday;
+        }
+
+        function getSavedData() {
+            try {
+                const data = localStorage.getItem(DATA_KEY);
+                return data ? JSON.parse(data) : null;
+            } catch {
+                return null;
+            }
+        }
+
+        function saveData(results) {
+            try {
+                const data = {
+                    results: results,
+                    week: formatDate(getMondayOfWeek()),
+                    date: new Date().toLocaleString('ko-KR'),
+                    timestamp: Date.now()
+                };
+                localStorage.setItem(DATA_KEY, JSON.stringify(data));
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        function clearData() {
+            localStorage.removeItem(DATA_KEY);
+            currentResults = null;
+            updateUI();
+            updateSidebar();
+            document.getElementById('savedResults').classList.add('hidden');
+            document.getElementById('lotterySetup').classList.remove('hidden');
+        }
+
+        // UI 업데이트 함수들
+        function updateUI() {
+            document.getElementById('memberCount').textContent = members + '명';
+            document.getElementById('itemCount').textContent = items + '개';
+            
+            updateItemLabels();
+            updateTicketsDisplay();
+            updateNameInputs();
+            updateInputStatus();
+            updateDrawButton();
+        }
+
+        function updateItemLabels() {
+            const container = document.getElementById('itemLabels');
+            container.innerHTML = '';
+            
+            for (let i = 0; i < items; i++) {
+                const div = document.createElement('div');
+                div.className = 'flex items-center gap-2';
+                div.innerHTML = `
+                    <span class="text-sm text-gray-500 min-w-[4rem]">항목 ${i + 1}</span>
+                    <input type="text" value="${itemLabels[i]}" 
+                           onchange="updateItemLabel(${i}, this.value)"
+                           class="flex-1 px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="항목 ${i + 1} 이름">
+                `;
+                container.appendChild(div);
+            }
+        }
+
+        function updateTicketsDisplay() {
+            const container = document.getElementById('ticketsDisplay');
+            container.innerHTML = '';
+            
+            for (let i = 0; i < members; i++) {
+                const name = memberNames[i];
+                const colorEmoji = colors[i % colors.length];
+                
+                const div = document.createElement('div');
+                div.className = 'text-center p-3 border rounded-lg';
+                
+                if (name.trim()) {
+                    div.className += ' bg-green-50 border-green-200';
+                    div.innerHTML = `
+                        <div class="text-2xl mb-1">${colorEmoji}</div>
+                        <div class="font-semibold text-sm">${i + 1}번</div>
+                        <div class="text-xs text-green-600">✅ ${name}</div>
+                    `;
+                } else {
+                    div.className += ' bg-gray-50 border-gray-200';
+                    div.innerHTML = `
+                        <div class="text-2xl mb-1">⚪</div>
+                        <div class="font-semibold text-sm">${i + 1}번</div>
+                        <div class="text-xs text-gray-500">⏳ 대기중</div>
+                    `;
+                }
+                
+                container.appendChild(div);
+            }
+        }
+
+        function updateNameInputs() {
+            const container = document.getElementById('nameInputs');
+            container.innerHTML = '';
+            
+            for (let i = 0; i < members; i++) {
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    <input type="text" value="${memberNames[i]}" 
+                           onchange="updateMemberName(${i}, this.value)"
+                           placeholder="${i + 1}번 이름" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           ${isDrawing ? 'disabled' : ''}>
+                `;
+                container.appendChild(div);
+            }
+        }
+
+        function updateInputStatus() {
+            const completedCount = memberNames.filter(name => name.trim() !== '').length;
+            const statusElement = document.getElementById('inputStatus');
+            
+            if (completedCount === members) {
+                statusElement.innerHTML = `<span class="text-green-600">✅ 모든 이름 입력 완료 (${completedCount}/${members}명)</span>`;
+            } else {
+                statusElement.innerHTML = `이름 입력 완료: ${completedCount}/${members}명 <span class="text-red-600 ml-2">(모든 이름을 입력해주세요)</span>`;
+            }
+        }
+
+        function updateDrawButton() {
+            const button = document.getElementById('drawButton');
+            const allNamesEntered = memberNames.every(name => name.trim() !== '');
+            
+            if (allNamesEntered && !isDrawing) {
+                button.disabled = false;
+                button.className = 'px-8 py-3 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all duration-200';
+            } else {
+                button.disabled = true;
+                button.className = 'px-8 py-3 rounded-lg font-medium text-white bg-gray-400 cursor-not-allowed transition-all duration-200';
+            }
+        }
+
+        function updateSidebar() {
+            // 주차 정보
+            const currentMonday = getMondayOfWeek();
+            const currentSunday = new Date(currentMonday);
+            currentSunday.setDate(currentSunday.getDate() + 6);
+            
+            document.getElementById('currentWeek').textContent = 
+                `현재 주차: ${currentMonday.getMonth() + 1}/${currentMonday.getDate()} ~ ${currentSunday.getMonth() + 1}/${currentSunday.getDate()}`;
+            
+            const nextMonday = new Date(currentMonday);
+            nextMonday.setDate(nextMonday.getDate() + 7);
+            document.getElementById('nextReset').textContent = 
+                `다음 초기화: ${nextMonday.getMonth() + 1}/${nextMonday.getDate()} (월요일)`;
+            
+            // 저장 상태
+            const savedData = getSavedData();
+            const saveStatusEl = document.getElementById('saveStatus');
+            if (savedData && !isNewWeek()) {
+                saveStatusEl.innerHTML = '<span class="text-green-600">📁 결과 저장됨</span>';
+            } else {
+                saveStatusEl.innerHTML = '<span class="text-gray-500">❌ 저장된 데이터 없음</span>';
+            }
+            
+            // 사이드바 결과
+            const sidebarResults = document.getElementById('sidebarResults');
+            if (currentResults) {
+                let html = '<div class="space-y-2">';
+                currentResults.forEach(item => {
+                    html += `<div><strong>🏆 ${item.label}</strong><br>`;
+                    if (item.members.length > 0) {
+                        item.members.forEach(member => {
+                            const colorEmoji = colors[(member.index - 1) % colors.length];
+                            html += `<span class="text-xs">${colorEmoji} ${member.name} (${member.index}번)</span><br>`;
+                        });
+                    } else {
+                        html += '<span class="text-xs text-gray-500">배정된 인원 없음</span><br>';
+                    }
+                    html += '</div>';
+                });
+                html += '</div>';
+                sidebarResults.innerHTML = html;
+            } else {
+                sidebarResults.innerHTML = '<p class="text-sm text-gray-500">⏳ 제비뽑기 대기 중</p>';
+            }
+        }
+
+        // 이벤트 핸들러들
+        function changeMembers(delta) {
+            const newCount = Math.max(2, Math.min(20, members + delta));
+            if (newCount !== members) {
+                members = newCount;
+                if (memberNames.length < members) {
+                    while (memberNames.length < members) {
+                        memberNames.push('');
+                    }
+                } else {
+                    memberNames = memberNames.slice(0, members);
+                }
+                updateUI();
+            }
+        }
+
+        function changeItems(delta) {
+            const newCount = Math.max(1, Math.min(10, items + delta));
+            if (newCount !== items) {
+                items = newCount;
+                if (itemLabels.length < items) {
+                    while (itemLabels.length < items) {
+                        itemLabels.push(`항목${itemLabels.length + 1}`);
+                    }
+                } else {
+                    itemLabels = itemLabels.slice(0, items);
+                }
+                updateUI();
+            }
+        }
+
+        function updateItemLabel(index, value) {
+            itemLabels[index] = value || `항목${index + 1}`;
+        }
+
+        function updateMemberName(index, value) {
+            memberNames[index] = value;
+            updateUI();
+        }
+
+        function startDraw() {
+            if (!memberNames.every(name => name.trim() !== '')) {
+                alert('모든 이름을 입력해주세요!');
+                return;
+            }
+            
+            isDrawing = true;
+            document.getElementById('drawButton').textContent = '제비뽑기 진행 중...';
+            updateDrawButton();
+            
+            // 애니메이션 효과
+            const tickets = document.querySelectorAll('#ticketsDisplay > div');
+            tickets.forEach(ticket => {
+                ticket.classList.add('bounce');
+            });
+            
+            setTimeout(() => {
+                // 제비뽑기 로직
+                const shuffledMembers = memberNames.map((name, index) => ({
+                    index: index + 1,
+                    name: name
+                })).sort(() => Math.random() - 0.5);
+                
+                const membersPerItem = Math.floor(members / items);
+                const remainder = members % items;
+                
+                const results = [];
+                let currentIndex = 0;
+                
+                for (let i = 0; i < items; i++) {
+                    const itemMemberCount = membersPerItem + (i < remainder ? 1 : 0);
+                    const assignedMembers = [];
+                    
+                    for (let j = 0; j < itemMemberCount; j++) {
+                        if (currentIndex < shuffledMembers.length) {
+                            assignedMembers.push(shuffledMembers[currentIndex]);
+                            currentIndex++;
+                        }
+                    }
+                    
+                    results.push({
+                        label: itemLabels[i],
+                        members: assignedMembers
+                    });
+                }
+                
+                currentResults = results;
+                saveData(results);
+                displayResults();
+                
+                isDrawing = false;
+                document.getElementById('drawButton').textContent = '🎯 제비뽑기 시작!';
+                updateDrawButton();
+                updateSidebar();
+                
+                tickets.forEach(ticket => {
+                    ticket.classList.remove('bounce');
+                });
+            }, 2000);
+        }
+
+        function displayResults() {
+            const resultArea = document.getElementById('savedResults');
+            const resultContent = document.getElementById('resultsContent');
+            const resultDate = document.getElementById('resultDate');
+            
+            let html = '';
+            currentResults.forEach((result, index) => {
+                const bgColor = index % 2 === 0 ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200';
+                const textColor = index % 2 === 0 ? 'text-blue-800' : 'text-green-800';
+                
+                html += `
+                    <div class="rounded-lg p-4 border-2 ${bgColor}">
+                        <h3 class="text-lg font-semibold mb-3 text-center ${textColor}">🏆 ${result.label}</h3>
+                        <div class="space-y-2">
+                `;
+                
+                if (result.members.length > 0) {
+                    result.members.forEach(member => {
+                        const colorEmoji = colors[(member.index - 1) % colors.length];
+                        html += `
+                            <div class="flex items-center gap-2 px-3 py-2 bg-white rounded-lg shadow-sm">
+                                <span class="text-lg">${colorEmoji}</span>
+                                <span class="font-medium">${member.name}</span>
+                                <span class="text-sm text-gray-500">(${member.index}번)</span>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += '<div class="text-center text-gray-500 py-4">배정된 인원이 없습니다</div>';
+                }
+                
+                html += '</div></div>';
+            });
+            
+            resultContent.innerHTML = html;
+            resultDate.textContent = `생성일시: ${new Date().toLocaleString('ko-KR')}`;
+            
+            resultArea.classList.remove('hidden');
+            document.getElementById('lotterySetup').classList.add('hidden');
+        }
+
+        function newLottery() {
+            currentResults = null;
+            document.getElementById('savedResults').classList.add('hidden');
+            document.getElementById('lotterySetup').classList.remove('hidden');
+            updateSidebar();
+        }
+
+        function shareResults() {
+            if (!currentResults) return;
+            
+            let shareText = '📋 이번 주 점심시간 제비뽑기 결과\n';
+            shareText += `📅 ${new Date().toLocaleString('ko-KR')}\n\n`;
+            
+            currentResults.forEach(item => {
+                shareText += `🏆 ${item.label}\n`;
+                if (item.members.length > 0) {
+                    item.members.forEach(member => {
+                        shareText += `  • ${member.name} (${member.index}번)\n`;
+                    });
+                } else {
+                    shareText += '  • 배정된 인원 없음\n';
+                }
+                shareText += '\n';
+            });
+            
+            document.getElementById('shareText').value = shareText;
+            document.getElementById('shareModal').classList.remove('hidden');
+        }
+
+        function closeShareModal() {
+            document.getElementById('shareModal').classList.add('hidden');
+        }
+
+        function copyToClipboard() {
+            const textArea = document.getElementById('shareText');
+            textArea.select();
+            document.execCommand('copy');
+            alert('클립보드에 복사되었습니다!');
+        }
+
+        // 초기화
+        function init() {
+            // 주차 정보 표시
+            const currentMonday = getMondayOfWeek();
+            const currentSunday = new Date(currentMonday);
+            currentSunday.setDate(currentSunday.getDate() + 6);
+            
+            document.getElementById('weekInfo').textContent = 
+                `현재 주차: ${currentMonday.getFullYear()}-${String(currentMonday.getMonth() + 1).padStart(2, '0')}-${String(currentMonday.getDate()).padStart(2, '0')} ~ ${currentSunday.getFullYear()}-${String(currentSunday.getMonth() + 1).padStart(2, '0')}-${String(currentSunday.getDate()).padStart(2, '0')}`;
+            
+            // 저장된 데이터 확인
+            const savedData = getSavedData();
+            
+            if (savedData && !isNewWeek()) {
+                currentResults = savedData.results;
+                displayResults();
+            } else {
+                if (savedData && isNewWeek()) {
+                    clearData();
+                }
+                document.getElementById('savedResults').classList.add('hidden');
+            }
+            
+            updateUI();
+            updateSidebar();
+        }
+
+        // 페이지 로드시 초기화
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
