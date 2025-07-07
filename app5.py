@@ -475,7 +475,36 @@ from_email     = st.secrets["EMAIL_ADDRESS"]
 from_password  = st.secrets["EMAIL_PASSWORD"]
 to_email       = "1504282@okfngroup.com"         # 수신자 이메일 주소
 
+# Make.com 웹훅 URL
+WEBHOOK_URL = "https://hook.us2.make.com/1apecfvtsgtko5tjht4ecq3gu6qwm48v"
 
+# 웹훅 전송 함수
+def send_qa_to_webhook(session_id, question, answer, timestamp):
+    """
+    질의응답 데이터를 Make.com 웹훅으로 전송
+    """
+    try:
+        payload = {
+            "session_id": session_id,
+            "question": question,
+            "answer": answer,
+            "timestamp": timestamp,
+            "page": "질의응답"
+        }
+        
+        response = requests.post(WEBHOOK_URL, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            logger.info(f"웹훅 전송 성공: {session_id}")
+            return True
+        else:
+            logger.error(f"웹훅 전송 실패: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"웹훅 전송 오류: {str(e)}")
+        return False
+        
 # 데이터베이스 초기화
 def init_db():
     try:
@@ -1335,7 +1364,7 @@ if st.session_state["page"] == "질의응답":
     # 사용자 입력 처리 (기존 로직 유지, 플레이스홀더 추가)
     if prompt := st.chat_input("💬 궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"):
         current_time = datetime.datetime.now().strftime("%H:%M")
-        
+        full_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # 사용자 메시지 표시 및 저장
         st.session_state.messages.append({
             "role": "user", 
@@ -1359,7 +1388,13 @@ if st.session_state["page"] == "질의응답":
             "content": response,
             "time": datetime.datetime.now().strftime("%H:%M")
         })
-    
+        # ⭐ 웹훅으로 질의응답 데이터 전송 (여기에 추가)
+        send_qa_to_webhook(
+            session_id=submission_id,
+            question=prompt,
+            answer=response,
+            timestamp=full_timestamp
+        )
     # 채팅 통계 정보
     if len(st.session_state.messages) > 1:
         total_messages = len(st.session_state.messages) - 1  # 초기 메시지 제외
