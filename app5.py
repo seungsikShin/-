@@ -1258,7 +1258,6 @@ st.sidebar.markdown("""
 # --- 챗봇 입력창 스타일 커스텀 CSS 추가 (st.set_page_config 아래)
 st.markdown("""
 <style>
-/* 챗봇 입력창 스타일 */
 .chat-input-row {
     display: flex;
     align-items: center;
@@ -1282,12 +1281,8 @@ button[kind="formSubmit"] {
     font-size: 1.05rem;
     padding: 0.6rem 1.4rem;
     margin-left: 0.2rem;
-    box-shadow: 0 2px 8px 0 rgba(80,100,200,0.10);
+    box-shadow: 0 2px 8px 0 rgba(80,100,200,0.08);
     border: none;
-    transition: background 0.2s;
-}
-button[kind="formSubmit"]:hover {
-    background: linear-gradient(90deg, #5a67d8 0%, #34d399 100%);
 }
 </style>
 """, unsafe_allow_html=True)
