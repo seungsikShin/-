@@ -473,7 +473,7 @@ openai_org_id  = st.secrets["OPENAI_ORG_ID"]
 # 이메일 정보 (예시, 실제로 입력해 주세요)
 from_email     = st.secrets["EMAIL_ADDRESS"]
 from_password  = st.secrets["EMAIL_PASSWORD"]
-to_email       = "1504282@okfngroup.com"         # 수신자 이메일 주소
+to_email       = "okh_audit@okfngroup.com"         # 수신자 이메일 주소
 
 
 # 데이터베이스 초기화
@@ -1332,34 +1332,37 @@ if st.session_state["page"] == "질의응답":
                     st.markdown(f"👤 **나** - {message['time']}")
                 st.write(message["content"])
     
-    # 사용자 입력 처리 (기존 로직 유지, 플레이스홀더 추가)
-    if prompt := st.chat_input("💬 궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"):
-        current_time = datetime.datetime.now().strftime("%H:%M")
-        
-        # 사용자 메시지 표시 및 저장
-        st.session_state.messages.append({
-            "role": "user", 
-            "content": prompt,
-            "time": current_time
-        })
-        with st.chat_message("user"):
-            st.markdown(f"👤 **나** - {current_time}")
-            st.write(prompt)
+    # 사용자 입력 처리 (st.chat_input 완전 제거, 입력창을 챗봇 셀 바로 아래로)
+    with st.form(key="chat_form", clear_on_submit=True):
+        user_input = st.text_input(
+            "궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)",
+            key="chat_text_input",
+            placeholder="궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"
+        )
+        submitted = st.form_submit_button("전송", use_container_width=True)
+        if submitted and user_input:
+            current_time = datetime.datetime.now().strftime("%H:%M")
+            st.session_state.messages.append({
+                "role": "user", 
+                "content": user_input,
+                "time": current_time
+            })
+            with st.chat_message("user"):
+                st.markdown(f"👤 **나** - {current_time}")
+                st.write(user_input)
 
-        # AI 응답 생성 중 표시
-        with st.chat_message("assistant"):
-            with st.spinner("🤖 AI가 답변을 생성하고 있습니다..."):
-                response = get_assistant_response(prompt)
-                st.markdown(f"🤖 **AI 비서** - {datetime.datetime.now().strftime('%H:%M')}")
-                st.write(response)
-        
-        # AI 응답 저장
-        st.session_state.messages.append({
-            "role": "assistant", 
-            "content": response,
-            "time": datetime.datetime.now().strftime("%H:%M")
-        })
-    
+            with st.chat_message("assistant"):
+                with st.spinner("🤖 AI가 답변을 생성하고 있습니다..."):
+                    response = get_assistant_response(user_input)
+                    st.markdown(f"🤖 **AI 비서** - {datetime.datetime.now().strftime('%H:%M')}")
+                    st.write(response)
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": response,
+                "time": datetime.datetime.now().strftime("%H:%M")
+            })
+            st.experimental_rerun()
+
     # 채팅 통계 정보
     if len(st.session_state.messages) > 1:
         total_messages = len(st.session_state.messages) - 1  # 초기 메시지 제외
