@@ -1530,28 +1530,37 @@ elif st.session_state["page"] == "파일 업로드":
             contract_method, budget_item
         )
 
-    # 챗봇 입력창을 파일 업로드 섹션 바로 위에 배치
-    if prompt := st.chat_input("💬 궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"):
-        current_time = datetime.datetime.now().strftime("%H:%M")
-        st.session_state.messages.append({
-            "role": "user", 
-            "content": prompt,
-            "time": current_time
-        })
-        with st.chat_message("user"):
-            st.markdown(f"👤 **나** - {current_time}")
-            st.write(prompt)
-
-        with st.chat_message("assistant"):
-            with st.spinner("🤖 AI가 답변을 생성하고 있습니다..."):
-                response = get_assistant_response(prompt)
-                st.markdown(f"🤖 **AI 비서** - {datetime.datetime.now().strftime('%H:%M')}")
-                st.write(response)
-        st.session_state.messages.append({
-            "role": "assistant", 
-            "content": response,
-            "time": datetime.datetime.now().strftime("%H:%M")
-        })
+    # 챗봇 입력창을 파일 업로드 섹션 바로 위에 배치 (커스텀)
+    with st.form(key="chat_form", clear_on_submit=True):
+        st.markdown('<div class="chat-input-row">', unsafe_allow_html=True)
+        user_input = st.text_input(
+            "",
+            key="chat_text_input",
+            placeholder="궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"
+        )
+        submitted = st.form_submit_button("전송")
+        st.markdown('</div>', unsafe_allow_html=True)
+        if submitted and user_input:
+            current_time = datetime.datetime.now().strftime("%H:%M")
+            st.session_state.messages.append({
+                "role": "user", 
+                "content": user_input,
+                "time": current_time
+            })
+            with st.chat_message("user"):
+                st.markdown(f"👤 **나** - {current_time}")
+                st.write(user_input)
+            with st.chat_message("assistant"):
+                with st.spinner("🤖 AI가 답변을 생성하고 있습니다..."):
+                    response = get_assistant_response(user_input)
+                    st.markdown(f"🤖 **AI 비서** - {datetime.datetime.now().strftime('%H:%M')}")
+                    st.write(response)
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": response,
+                "time": datetime.datetime.now().strftime("%H:%M")
+            })
+            st.experimental_rerun()
 
     # 📋 파일 업로드 섹션
     st.markdown("### 📋 필수 서류 업로드")
