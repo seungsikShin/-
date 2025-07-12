@@ -1510,112 +1510,109 @@ elif st.session_state["page"] == "파일 업로드":
     # 파일별 아이콘 정의
     file_icons = ["📄", "📝", "🗂️", "📊", "💰", "📋", "🏢", "👨‍💻", "📁"]
 
-    for idx, file in enumerate(required_files):
-        icon = file_icons[idx] if idx < len(file_icons) else "📄"
-        st.markdown(f"### {icon} {idx+1}. {file}")
+    # 2열 그리드로 업로드 UI 배치
+    for i in range(0, len(required_files), 2):
+        cols = st.columns(2)
+        for j in range(2):
+            if i + j < len(required_files):
+                file = required_files[i + j]
+                icon = file_icons[i + j] if (i + j) < len(file_icons) else "📄"
+                with cols[j]:
+                    st.markdown(f"### {icon} {i + j + 1}. {file}")
 
-        # DB에서 기존 업로드 정보 조회
-        conn = sqlite3.connect('audit_system.db')
-        c = conn.cursor()
-        c.execute(
-            "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?",
-            (submission_id, f"%{file}%")
-        )
-        uploaded_row = c.fetchone()
-        c.execute(
-            "SELECT reason FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?",
-            (submission_id, file)
-        )
-        reason_row = c.fetchone()
-        conn.close()
+                    # DB에서 기존 업로드 정보 조회
+                    conn = sqlite3.connect('audit_system.db')
+                    c = conn.cursor()
+                    c.execute(
+                        "SELECT file_name, file_path FROM uploaded_files WHERE submission_id = ? AND file_name LIKE ?",
+                        (submission_id, f"%{file}%")
+                    )
+                    uploaded_row = c.fetchone()
+                    c.execute(
+                        "SELECT reason FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?",
+                        (submission_id, file)
+                    )
+                    reason_row = c.fetchone()
+                    conn.close()
 
-        # 이미 업로드된 파일이 있는 경우
-        if uploaded_row:
-            uploaded_count += 1
-            file_name, file_path = uploaded_row
-            col_a, col_b = st.columns([4,1])
-            with col_a:
-                st.success(f"✅ **{file}** 업로드 완료: `{file_name}`")
-            with col_b:
-                if st.button("🗑️ 삭제", key=f"del_file_{file}"):
-                    try:
-                        conn = sqlite3.connect('audit_system.db')
-                        c = conn.cursor()
-                        c.execute(
-                            "DELETE FROM uploaded_files WHERE submission_id = ? AND file_name = ?",
-                            (submission_id, file_name)
-                        )
-                        conn.commit()
-                        conn.close()
-                        if os.path.exists(file_path):
-                            os.remove(file_path)
-                        st.success(f"🗑️ {file} 파일이 삭제되었습니다.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ 파일 삭제 오류: {e}")
-            continue
-
-        # 이미 사유가 입력된 경우
-        if reason_row:
-            uploaded_count += 1
-            col_a, col_b = st.columns([4,1])
-            with col_a:
-                st.info(f"📝 **{file}** 미제출 사유: `{reason_row[0]}`")
-            with col_b:
-                if st.button("🗑️ 삭제", key=f"del_reason_{file}"):
-                    try:
-                        conn = sqlite3.connect('audit_system.db')
-                        c = conn.cursor()
-                        c.execute(
-                            "DELETE FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?",
-                            (submission_id, file)
-                        )
-                        conn.commit()
-                        conn.close()
-                        st.success(f"🗑️ {file} 사유가 삭제되었습니다.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ 사유 삭제 오류: {e}")
-            continue
-
-        # 업로드 또는 사유 입력 UI
-        col1, col2 = st.columns([3,1])
-        with col1:
-            uploaded_file = st.file_uploader(
-                f"📤 **{file}** 업로드",
-                key=f"uploader_{file}",
-                help=f"{file}을(를) 선택하여 업로드하세요 (모든 파일 형식 지원)"
-            )
-        with col2:
-            if uploaded_file:
-                is_valid, msg = validate_file(uploaded_file)
-                if is_valid:
-                    path = save_uploaded_file(uploaded_file, session_folder)
-                    if path:
-                        save_file_to_db(
-                            submission_id,
-                            f"{file} - {uploaded_file.name}",
-                            path,
-                            os.path.splitext(uploaded_file.name)[1],
-                            uploaded_file.size
-                        )
-                        st.success("✅ 업로드 완료")
+                    # 이미 업로드된 파일이 있는 경우
+                    if uploaded_row:
                         uploaded_count += 1
-                        st.rerun()
-                else:
-                    st.error(f"❌ {msg}")
-            else:
-                reason = st.text_input(
-                    f"📝 **{file}** 미업로드 사유",
-                    key=f"reason_{file}",
-                    placeholder="예: 해당없음, 추후제출예정, 계약조건상 불필요",
-                    help="업로드가 불가능한 구체적인 사유를 입력하세요"
-                )
-                if reason:
-                    if save_missing_reason_to_db(submission_id, file, reason):
-                        st.info("💾 사유 저장됨")
+                        file_name, file_path = uploaded_row
+                        st.success(f"✅ **{file}** 업로드 완료: `{file_name}`")
+                        if st.button("🗑️ 삭제", key=f"del_file_{file}"):
+                            try:
+                                conn = sqlite3.connect('audit_system.db')
+                                c = conn.cursor()
+                                c.execute(
+                                    "DELETE FROM uploaded_files WHERE submission_id = ? AND file_name = ?",
+                                    (submission_id, file_name)
+                                )
+                                conn.commit()
+                                conn.close()
+                                if os.path.exists(file_path):
+                                    os.remove(file_path)
+                                st.success(f"🗑️ {file} 파일이 삭제되었습니다.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ 파일 삭제 오류: {e}")
+                        continue
+
+                    # 이미 사유가 입력된 경우
+                    if reason_row:
                         uploaded_count += 1
-                        st.rerun()
+                        st.info(f"📝 **{file}** 미제출 사유: `{reason_row[0]}`")
+                        if st.button("🗑️ 삭제", key=f"del_reason_{file}"):
+                            try:
+                                conn = sqlite3.connect('audit_system.db')
+                                c = conn.cursor()
+                                c.execute(
+                                    "DELETE FROM missing_file_reasons WHERE submission_id = ? AND file_name = ?",
+                                    (submission_id, file)
+                                )
+                                conn.commit()
+                                conn.close()
+                                st.success(f"🗑️ {file} 사유가 삭제되었습니다.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ 사유 삭제 오류: {e}")
+                        continue
+
+                    # 업로드 또는 사유 입력 UI (2열 내에서 업로드창 아래에 사유 입력)
+                    uploaded_file = st.file_uploader(
+                        f"📤 **{file}** 업로드",
+                        key=f"uploader_{file}",
+                        help=f"{file}을(를) 선택하여 업로드하세요 (모든 파일 형식 지원)"
+                    )
+                    if uploaded_file:
+                        is_valid, msg = validate_file(uploaded_file)
+                        if is_valid:
+                            path = save_uploaded_file(uploaded_file, session_folder)
+                            if path:
+                                save_file_to_db(
+                                    submission_id,
+                                    f"{file} - {uploaded_file.name}",
+                                    path,
+                                    os.path.splitext(uploaded_file.name)[1],
+                                    uploaded_file.size
+                                )
+                                st.success("✅ 업로드 완료")
+                                uploaded_count += 1
+                                st.rerun()
+                        else:
+                            st.error(f"❌ {msg}")
+                    # 미업로드 사유 입력창은 업로드창 바로 아래에 위치
+                    reason = st.text_input(
+                        f"📝 **{file}** 미업로드 사유",
+                        key=f"reason_{file}",
+                        placeholder="예: 해당없음, 추후제출예정, 계약조건상 불필요",
+                        help="업로드가 불가능한 구체적인 사유를 입력하세요"
+                    )
+                    if reason:
+                        if save_missing_reason_to_db(submission_id, file, reason):
+                            st.info("💾 사유 저장됨")
+                            uploaded_count += 1
+                            st.rerun()
 
     # 진행률 표시
     progress_percentage = uploaded_count / total_files
