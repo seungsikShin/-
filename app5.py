@@ -1508,8 +1508,7 @@ elif st.session_state["page"] == "파일 업로드":
 
     # 접수 ID 표시 및 업데이트
     if department:
-        safe_dept = re.sub(r'[^
--Za-z0-9]', '', department)[:6]
+        safe_dept = re.sub(r'[^\w]', '', department)[:6]
         st.session_state["submission_id"] = f"AUDIT-{upload_date}-{safe_dept}"
     sid = st.session_state["submission_id"]
 
