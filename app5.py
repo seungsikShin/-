@@ -1,7 +1,7 @@
 import streamlit as st
 # ← import 바로 다음 줄에만 이것! 다른 st.* 호출 NO
 st.set_page_config(
-    page_title="일상감사 접수 시스템",
+    page_title="일상감사 AI 감사 시스템",
     page_icon="📋",
     layout="wide",
 )
@@ -1255,6 +1255,43 @@ st.sidebar.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# --- 챗봇 입력창 스타일 커스텀 CSS 추가 (st.set_page_config 아래)
+st.markdown("""
+<style>
+/* 챗봇 입력창 스타일 */
+.chat-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0.5rem;
+}
+input[type="text"][id^="chat_text_input"] {
+    flex: 1 1 auto;
+    border-radius: 20px;
+    border: 1.5px solid #bfcfff;
+    padding: 0.7rem 1.2rem;
+    font-size: 1.08rem;
+    background: #f7faff;
+    box-shadow: 0 1px 4px 0 rgba(80,100,200,0.06);
+}
+button[kind="formSubmit"] {
+    border-radius: 20px;
+    background: linear-gradient(90deg, #667eea 0%, #6ee7b7 100%);
+    color: white !important;
+    font-weight: 600;
+    font-size: 1.05rem;
+    padding: 0.6rem 1.4rem;
+    margin-left: 0.2rem;
+    box-shadow: 0 2px 8px 0 rgba(80,100,200,0.10);
+    border: none;
+    transition: background 0.2s;
+}
+button[kind="formSubmit"]:hover {
+    background: linear-gradient(90deg, #5a67d8 0%, #34d399 100%);
+}
+</style>
+""", unsafe_allow_html=True)
+
 # 질의응답 페이지 - 첫 번째 페이지로 추가
 if st.session_state["page"] == "질의응답":
     st.title("💬 일상감사 질의응답")
@@ -1334,15 +1371,14 @@ if st.session_state["page"] == "질의응답":
     
     # 사용자 입력 처리 (st.chat_input 완전 제거, 입력창을 챗봇 셀 바로 아래로)
     with st.form(key="chat_form", clear_on_submit=True):
-        input_col, btn_col = st.columns([8,1])
-        with input_col:
-            user_input = st.text_input(
-                "궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)",
-                key="chat_text_input",
-                placeholder="궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"
-            )
-        with btn_col:
-            submitted = st.form_submit_button("전송", use_container_width=False)
+        st.markdown('<div class="chat-input-row">', unsafe_allow_html=True)
+        user_input = st.text_input(
+            "",
+            key="chat_text_input",
+            placeholder="궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"
+        )
+        submitted = st.form_submit_button("전송")
+        st.markdown('</div>', unsafe_allow_html=True)
         if submitted and user_input:
             current_time = datetime.datetime.now().strftime("%H:%M")
             st.session_state.messages.append({
