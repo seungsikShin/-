@@ -475,36 +475,7 @@ from_email     = st.secrets["EMAIL_ADDRESS"]
 from_password  = st.secrets["EMAIL_PASSWORD"]
 to_email       = "1504282@okfngroup.com"         # 수신자 이메일 주소
 
-# Make.com 웹훅 URL
-WEBHOOK_URL = "https://hook.us2.make.com/1apecfvtsgtko5tjht4ecq3gu6qwm48v"
 
-# 웹훅 전송 함수
-def send_qa_to_webhook(session_id, question, answer, timestamp):
-    """
-    질의응답 데이터를 Make.com 웹훅으로 전송
-    """
-    try:
-        payload = {
-            "session_id": session_id,
-            "question": question,
-            "answer": answer,
-            "timestamp": timestamp,
-            "page": "질의응답"
-        }
-        
-        response = requests.post(WEBHOOK_URL, json=payload, timeout=10)
-        
-        if response.status_code == 200:
-            logger.info(f"웹훅 전송 성공: {session_id}")
-            return True
-        else:
-            logger.error(f"웹훅 전송 실패: {response.status_code}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"웹훅 전송 오류: {str(e)}")
-        return False
-        
 # 데이터베이스 초기화
 def init_db():
     try:
@@ -1364,7 +1335,7 @@ if st.session_state["page"] == "질의응답":
     # 사용자 입력 처리 (기존 로직 유지, 플레이스홀더 추가)
     if prompt := st.chat_input("💬 궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"):
         current_time = datetime.datetime.now().strftime("%H:%M")
-        full_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
         # 사용자 메시지 표시 및 저장
         st.session_state.messages.append({
             "role": "user", 
@@ -1388,13 +1359,7 @@ if st.session_state["page"] == "질의응답":
             "content": response,
             "time": datetime.datetime.now().strftime("%H:%M")
         })
-        # ⭐ 웹훅으로 질의응답 데이터 전송 (여기에 추가)
-        send_qa_to_webhook(
-            session_id=submission_id,
-            question=prompt,
-            answer=response,
-            timestamp=full_timestamp
-        )
+    
     # 채팅 통계 정보
     if len(st.session_state.messages) > 1:
         total_messages = len(st.session_state.messages) - 1  # 초기 메시지 제외
@@ -1989,3 +1954,70 @@ elif st.session_state["page"] == "접수 완료":
                     st.error(f"❌ 이메일 발송 중 오류가 발생했습니다: {message}")
 
     conn.close()
+
+st.markdown("""
+    <style>
+    /* 전체 배경색 */
+    .stApp {
+        background: linear-gradient(120deg, #e0e7ff 0%, #f0f4ff 100%);
+        min-height: 100vh;
+    }
+    /* 메인 컨테이너 카드 스타일 */
+    .main > div {
+        background: rgba(255,255,255,0.85);
+        border-radius: 18px;
+        box-shadow: 0 4px 24px 0 rgba(80,100,200,0.10);
+        padding: 32px 32px 24px 32px;
+        margin-top: 24px;
+        margin-bottom: 24px;
+    }
+    /* 헤더 스타일 */
+    h1, h2, h3, h4 {
+        color: #3b3b6d;
+        font-family: 'Segoe UI', 'Pretendard', 'Noto Sans KR', sans-serif;
+        font-weight: 700;
+    }
+    /* 버튼 스타일 */
+    button[kind="primary"] {
+        background: linear-gradient(90deg, #667eea 0%, #6ee7b7 100%);
+        color: white !important;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1.1rem;
+        box-shadow: 0 2px 8px 0 rgba(80,100,200,0.10);
+        transition: background 0.2s;
+    }
+    button[kind="primary"]:hover {
+        background: linear-gradient(90deg, #5a67d8 0%, #34d399 100%);
+    }
+    /* 입력창 스타일 */
+    .stTextInput>div>div>input, .stTextArea>div>textarea {
+        background: #f4f7fa;
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+        font-size: 1.05rem;
+    }
+    /* 카드 느낌의 컨테이너 */
+    .stContainer {
+        background: rgba(255,255,255,0.95);
+        border-radius: 16px;
+        box-shadow: 0 2px 12px 0 rgba(80,100,200,0.08);
+        padding: 18px 24px;
+        margin-bottom: 18px;
+    }
+    /* 채팅 말풍선 스타일 */
+    .stChatMessage {
+        background: #f0f4ff;
+        border-radius: 12px;
+        padding: 12px 18px;
+        margin-bottom: 10px;
+        box-shadow: 0 1px 4px 0 rgba(80,100,200,0.06);
+    }
+    /* 사이드바는 기본 Streamlit 스타일 유지 */
+    section[data-testid="stSidebar"] {
+        background: #fff;
+        border-right: 1px solid #e5e7eb;
+    }
+    </style>
+""", unsafe_allow_html=True)
