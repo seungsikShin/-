@@ -1369,7 +1369,7 @@ if st.session_state["page"] == "질의응답":
                     st.markdown(f"👤 **나** - {message['time']}")
                 st.write(message["content"])
     
-    # 챗봇 입력창: 제목 바로 아래, 채팅 히스토리 위로 이동
+    # 챗봇 입력창: F드라이브처럼 st.chat_input 사용, 위치는 C드라이브처럼 카드 내부에 유지
     if prompt := st.chat_input("💬 궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"):
         current_time = datetime.datetime.now().strftime("%H:%M")
         st.session_state.messages.append({
@@ -1508,7 +1508,8 @@ elif st.session_state["page"] == "파일 업로드":
 
     # 접수 ID 표시 및 업데이트
     if department:
-        safe_dept = re.sub(r'[^\w]', '', department)[:6]
+        safe_dept = re.sub(r'[^
+-Za-z0-9]', '', department)[:6]
         st.session_state["submission_id"] = f"AUDIT-{upload_date}-{safe_dept}"
     sid = st.session_state["submission_id"]
 
@@ -1529,6 +1530,29 @@ elif st.session_state["page"] == "파일 업로드":
             contract_name, contract_period, contract_amount_formatted,
             contract_method, budget_item
         )
+
+    # 챗봇 입력창을 파일 업로드 섹션 바로 위에 배치
+    if prompt := st.chat_input("💬 궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"):
+        current_time = datetime.datetime.now().strftime("%H:%M")
+        st.session_state.messages.append({
+            "role": "user", 
+            "content": prompt,
+            "time": current_time
+        })
+        with st.chat_message("user"):
+            st.markdown(f"👤 **나** - {current_time}")
+            st.write(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("🤖 AI가 답변을 생성하고 있습니다..."):
+                response = get_assistant_response(prompt)
+                st.markdown(f"🤖 **AI 비서** - {datetime.datetime.now().strftime('%H:%M')}")
+                st.write(response)
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": response,
+            "time": datetime.datetime.now().strftime("%H:%M")
+        })
 
     # 📋 파일 업로드 섹션
     st.markdown("### 📋 필수 서류 업로드")
