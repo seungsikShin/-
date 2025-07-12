@@ -1369,7 +1369,7 @@ if st.session_state["page"] == "질의응답":
                     st.markdown(f"👤 **나** - {message['time']}")
                 st.write(message["content"])
     
-    # 챗봇 입력창: F드라이브처럼 st.chat_input 사용, 위치는 C드라이브처럼 카드 내부에 유지
+    # 챗봇 입력창: 제목 바로 아래, 채팅 히스토리 위로 이동
     if prompt := st.chat_input("💬 궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"):
         current_time = datetime.datetime.now().strftime("%H:%M")
         st.session_state.messages.append({
