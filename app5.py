@@ -1334,12 +1334,15 @@ if st.session_state["page"] == "질의응답":
     
     # 사용자 입력 처리 (st.chat_input 완전 제거, 입력창을 챗봇 셀 바로 아래로)
     with st.form(key="chat_form", clear_on_submit=True):
-        user_input = st.text_input(
-            "궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)",
-            key="chat_text_input",
-            placeholder="궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"
-        )
-        submitted = st.form_submit_button("전송", use_container_width=True)
+        input_col, btn_col = st.columns([8,1])
+        with input_col:
+            user_input = st.text_input(
+                "궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)",
+                key="chat_text_input",
+                placeholder="궁금한 점을 입력하세요... (예: 계약서에 어떤 내용이 들어가야 하나요?)"
+            )
+        with btn_col:
+            submitted = st.form_submit_button("전송", use_container_width=False)
         if submitted and user_input:
             current_time = datetime.datetime.now().strftime("%H:%M")
             st.session_state.messages.append({
